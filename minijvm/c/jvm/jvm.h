@@ -26,13 +26,12 @@ extern "C" {
 
 
 //=======================  micro define  =============================
-//_JVM_DEBUG  01=thread info, 02=garage info , 03=class load, 04=method call,  06=all bytecode
-#define _JVM_DEBUG_BYTECODE_DETAIL 01
+//_JVM_DEBUG  01=thread info, 02=garage&jit info  , 03=class load, 04=method call,  06=all bytecode
+#define _JVM_DEBUG_BYTECODE_DETAIL 02
 #define _JVM_DEBUG_PRINT_FILE 0
 #define _JVM_DEBUG_GARBAGE_DUMP 0
 #define _JVM_DEBUG_PROFILE 0
 
-#define JDWP_DEBUG 0
 
 #if __JVM_OS_VS__ || __JVM_OS_MINGW__ || __JVM_OS_CYGWIN__
 #define barrier() MemoryBarrier()
@@ -418,7 +417,7 @@ typedef struct _JNIENV JniEnv;
 typedef struct _ReferArr CStringArr;
 typedef struct _ReferArr ReferArr;
 typedef struct _StackFrame RuntimeStack;
-
+typedef struct _Jit Jit;
 
 typedef s32 (*java_native_fun)(Runtime *runtime, JClass *p);
 
@@ -445,6 +444,7 @@ enum {
 
 extern char *STRS_CLASS_EXCEPTION[];
 
+extern c8 *STR_CLASS_JAVA_LANG_INTEGER;
 extern c8 *STR_CLASS_JAVA_LANG_STRING;
 extern c8 *STR_CLASS_JAVA_LANG_STRINGBUILDER;
 extern c8 *STR_CLASS_JAVA_LANG_OBJECT;
@@ -503,10 +503,7 @@ int  10
 long  11
   reference 12
  */
-#define DATATYPE_COUNT 14
-extern c8 *data_type_str;
 
-extern s32 data_type_bytes[DATATYPE_COUNT];
 
 enum {
     DATATYPE_BOOLEAN = 4,
@@ -520,7 +517,12 @@ enum {
     DATATYPE_REFERENCE = 12,
     DATATYPE_ARRAY = 13,
     DATATYPE_RETURNADDRESS = 14,
+    DATATYPE_COUNT,
 };
+
+extern s32 data_type_bytes[DATATYPE_COUNT];
+extern c8 *data_type_str;
+
 //访问标志
 enum {
     ACC_PUBLIC = 0x0001,
@@ -585,11 +587,15 @@ extern Hashtable *sys_prop;
 extern s32 STACK_LENGHT_MAX;
 extern s32 STACK_LENGHT_INIT;
 
-int get_jvm_state();
+s32 get_jvm_state();
 
 void set_jvm_state(int state);
 
 extern c8 *inst_name[];
+
+extern s32 jdwp_enable;
+
+extern s32 jdwp_suspend_on_start;
 
 //==============profile============
 #if _JVM_DEBUG_PROFILE
@@ -820,6 +826,10 @@ typedef struct _LocalVarTable {
     u16 index;
 } LocalVarTable;
 
+typedef struct _SwitchTable SwitchTable;
+
+typedef s32 (*jit_func)(MethodInfo *method, Runtime *runtime);
+
 struct _CodeAttribute {
     u16 attribute_name_index;
     s32 attribute_length;
@@ -827,6 +837,20 @@ struct _CodeAttribute {
     u16 max_locals;
     s32 code_length;
     u8 *code; // [code_length];
+    u8 *bytecode_for_jit; // [code_length];
+    spinlock_t compile_lock;
+    struct _Jit {
+        jit_func func;
+        s32 len;
+        volatile s32 state;
+        volatile s32 interpreted_count;
+        SwitchTable *switchtable;//a table that compile switch ,fill in jump address
+        struct _ExceptionJumpTable {
+            __refer exception_handle_jump_ptr;//a ptr list for exception jump, size= exceptiontable.length
+            s32 bc_pos;
+        } *ex_jump_table;
+        __refer interrupt_handle_jump_ptr;
+    } jit;
     u16 exception_table_length;
     ExceptionTable *exception_table; //[exception_table_length];
     u16 line_number_table_length;
@@ -863,6 +887,7 @@ struct _FieldInfo {
     ConstantItem *const_value_item;
     Utf8String *name;
     Utf8String *descriptor;
+    Utf8String *signature;
     JClass *_this_class;
     u16 offset;//字段的偏移地址，静态字段存放在class中
     u16 offset_instance;
@@ -886,15 +911,17 @@ struct _MethodInfo {
     //link
     Utf8String *name;
     Utf8String *descriptor;
+    Utf8String *signature;
     Utf8String *paraType;
     Utf8String *returnType;
     JClass *_this_class;
     java_native_fun native_func;
     Pairlist *breakpoint;
+    Pairlist *pos_2_label; //for jit
+    Pairlist *jump_2_pos;  //for jit
     s16 para_slots;
     s16 para_count_with_this;
     s16 return_slots;
-    s16 na_1;
     //
     u16 access_flags;
     u16 name_index;
@@ -904,7 +931,8 @@ struct _MethodInfo {
     u8 is_native;
     u8 is_sync;
     u8 is_static;
-    u8 na_2;
+    u8 is_getter;
+    u8 is_setter;
 };
 //============================================
 
@@ -947,6 +975,7 @@ struct _ClassType {
 
     //
     Utf8String *source;
+    Utf8String *signature;
     BootstrapMethodsAttr *bootstrapMethodAttr;
 
     //
@@ -963,6 +992,7 @@ struct _ClassType {
     Pairlist *arr_class_type;//for object array create speedup,left is utf8 index of class, right is arr class
     ArrayList *insFieldPtrIndex;//for optmize , save object pointer field index
     ArrayList *staticFieldPtrIndex; //save static field index
+    ArrayList *supers; //cache superclass and interfaces , for checkcast and instanceof
 
     //
     s8 status;
@@ -988,6 +1018,8 @@ JClass *load_class(ClassLoader *loader, Utf8String *pClassName, Runtime *runtime
 
 s32 _LOAD_CLASS_FROM_BYTES(JClass *_this, ByteBuf *buf);
 
+void find_supers(JClass *clazz, Runtime *runtime);
+
 s32 class_prepar(JClass *clazz, Runtime *runtime);
 
 void _class_optimize(JClass *clazz);
@@ -1006,7 +1038,7 @@ s32 _class_constant_pool_destory(JClass *clazz);
 
 s32 _class_field_info_destory(JClass *clazz);
 
-u8 instance_of(JClass *clazz, Instance *ins, Runtime *runtime);
+u8 instance_of(Instance *ins, JClass *other);
 
 u8 isSonOfInterface(JClass *clazz, JClass *son, Runtime *runtime);
 
@@ -1155,13 +1187,16 @@ JClass *getClassByConstantClassRef(JClass *clazz, s32 index, Runtime *runtime);
 typedef struct _StackEntry {
     union {
         s64 lvalue;
+        u64 ulvalue;
         f64 dvalue;
         f32 fvalue;
         s32 ivalue;
+        u32 uivalue;
+    };
+    union {
         __refer rvalue;
         Instance *ins;
     };
-    s32 type;
 } StackEntry, LocalVarItem;
 
 struct _StackFrame {
@@ -1182,7 +1217,8 @@ struct _Runtime {
     Runtime *parent;//father method's runtime
     RuntimeStack *stack;
     LocalVarItem *localvar;
-    s32 invoke_type;
+    __refer jit_exception_jump_ptr;
+    s32 jit_exception_bc_pos;
     s16 localvar_slots;
 
     //
@@ -1236,14 +1272,13 @@ s64 entry_2_long_jni(StackEntry *entry);
 __refer entry_2_refer_jni(StackEntry *entry);
 
 static inline s32 stack_size(RuntimeStack *stack) {
-    return (stack->sp - stack->store);
+    return (s32) (stack->sp - stack->store);
 }
 
 /* push Integer */
 static inline void push_int(RuntimeStack *stack, s32 value) {
     stack->sp->ivalue = value;//clear 64bit
-    stack->sp->type = STACK_ENTRY_INT;
-    stack->sp++;
+    ++stack->sp;
 }
 
 
@@ -1255,25 +1290,21 @@ static inline s32 pop_int(RuntimeStack *stack) {
 /* push Double */
 static inline void push_double(RuntimeStack *stack, f64 value) {
     stack->sp->dvalue = value;
-    stack->sp->type = STACK_ENTRY_DOUBLE;
-    stack->sp++;
-    stack->sp->type = STACK_ENTRY_DOUBLE;
-//    ptr->dvalue = value;
-    stack->sp++;
+    ++stack->sp;
+    ++stack->sp;
 }
 
 /* pop Double */
 static inline f64 pop_double(RuntimeStack *stack) {
-    stack->sp -= 2;
+    --stack->sp;
+    --stack->sp;
     return stack->sp->dvalue;
 }
 
 /* push Float */
 static inline void push_float(RuntimeStack *stack, f32 value) {
-    //ptr->lvalue = 0;//clear 64bit
     stack->sp->fvalue = value;
-    stack->sp->type = STACK_ENTRY_FLOAT;
-    stack->sp++;
+    ++stack->sp;
 }
 
 /* pop Float */
@@ -1285,11 +1316,8 @@ static inline f32 pop_float(RuntimeStack *stack) {
 /* push Long */
 static inline void push_long(RuntimeStack *stack, s64 value) {
     stack->sp->lvalue = value;
-    stack->sp->type = STACK_ENTRY_LONG;
-    stack->sp++;
-    stack->sp->type = STACK_ENTRY_LONG;
-//    ptr->lvalue = value;
-    stack->sp++;
+    ++stack->sp;
+    ++stack->sp;
 }
 
 /* pop Long */
@@ -1300,9 +1328,8 @@ static inline s64 pop_long(RuntimeStack *stack) {
 
 /* push Ref */
 static inline void push_ref(RuntimeStack *stack, __refer value) {
-    stack->sp->type = STACK_ENTRY_REF;
     stack->sp->rvalue = value;
-    stack->sp++;
+    ++stack->sp;
 }
 
 static inline __refer pop_ref(RuntimeStack *stack) {
@@ -1312,9 +1339,8 @@ static inline __refer pop_ref(RuntimeStack *stack) {
 
 /* push ReturnAddress */
 static inline void push_ra(RuntimeStack *stack, __refer value) {
-    stack->sp->type = STACK_ENTRY_RETURNADDRESS;
     stack->sp->rvalue = value;
-    stack->sp++;
+    ++stack->sp;
 }
 
 static inline __refer pop_ra(RuntimeStack *stack) {
@@ -1323,16 +1349,14 @@ static inline __refer pop_ra(RuntimeStack *stack) {
 
 
 static inline void push_entry(RuntimeStack *stack, StackEntry *entry) {
-    stack->sp->lvalue = entry->lvalue;
-    stack->sp->type = entry->type;
-    stack->sp++;
+    *stack->sp = *entry;
+    ++stack->sp;
 }
 
 /* Pop Stack Entry */
 static inline void pop_entry(RuntimeStack *stack, StackEntry *entry) {
     stack->sp--;
-    entry->lvalue = stack->sp->lvalue;
-    entry->type = stack->sp->type;
+    *entry = *stack->sp;
 
 }
 
@@ -1342,8 +1366,7 @@ static inline void pop_empty(RuntimeStack *stack) {
 
 
 static inline void peek_entry(StackEntry *src, StackEntry *dst) {
-    dst->lvalue = src->lvalue;
-    dst->type = src->type;
+    *dst = *src;
 }
 
 
@@ -1360,19 +1383,6 @@ static inline __refer entry_2_refer(StackEntry *entry) {
     return entry->rvalue;
 }
 
-static inline s32 is_cat1(StackEntry *entry) {
-    if (entry->type & (STACK_ENTRY_INT | STACK_ENTRY_FLOAT | STACK_ENTRY_REF)) {
-        return 1;
-    }
-    return 0;
-}
-
-static inline s32 is_cat2(StackEntry *entry) {
-    if (entry->type & (STACK_ENTRY_LONG | STACK_ENTRY_DOUBLE)) {
-        return 1;
-    }
-    return 0;
-}
 
 s32 is_ref(StackEntry *entry);
 
@@ -1400,27 +1410,19 @@ static inline void localvar_init(Runtime *runtime, s32 var_slots, s32 para_slots
     runtime->localvar_slots = max_slots;
     s32 reserve_slots = max_slots - para_slots;
     if (reserve_slots) {
-        memset(&stack->store[stack_size(stack)], 0, reserve_slots * sizeof(StackEntry));
+        //memset(&stack->store[stack_size(stack)], 0, reserve_slots * sizeof(StackEntry));
         stack->sp += reserve_slots;
     }
 }
 
 static inline void localvar_dispose(Runtime *runtime) {
+    //memset(runtime->localvar, 0, sizeof(StackEntry) * (runtime->stack->sp - runtime->localvar));
     runtime->stack->sp = runtime->localvar;
 }
 
-static inline StackEntry *localvar_getEntry(LocalVarItem *localvar, s32 index) {
-    return &localvar[index];
-}
-
-static inline void localvar_setEntry(LocalVarItem *localvar, s32 index, StackEntry *entry) {
-    localvar[index].lvalue = entry->lvalue;
-    localvar[index].type = entry->type;
-}
 
 static inline void localvar_setInt(LocalVarItem *localvar, s32 index, s32 val) {
     localvar[index].ivalue = val;
-    localvar[index].type = STACK_ENTRY_INT;
 }
 
 static inline s32 localvar_getInt(LocalVarItem *localvar, s32 index) {
@@ -1429,7 +1431,6 @@ static inline s32 localvar_getInt(LocalVarItem *localvar, s32 index) {
 
 static inline void localvar_setLong(LocalVarItem *localvar, s32 index, s64 val) {
     localvar[index].lvalue = val;
-    localvar[index].type = STACK_ENTRY_LONG;
 }
 
 static inline s64 localvar_getLong(LocalVarItem *localvar, s32 index) {
@@ -1438,7 +1439,6 @@ static inline s64 localvar_getLong(LocalVarItem *localvar, s32 index) {
 
 static inline void localvar_setRefer(LocalVarItem *localvar, s32 index, __refer val) {
     localvar[index].rvalue = val;
-    localvar[index].type = STACK_ENTRY_REF;
 }
 
 static inline __refer localvar_getRefer(LocalVarItem *localvar, s32 index) {
@@ -1480,14 +1480,41 @@ void print_exception(Runtime *runtime);
 
 s32 execute_jvm(c8 *p_classpath, c8 *mainclass, ArrayList *java_para);
 
-s32 call_method_main(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, ArrayList *java_para);
+s32 call_method_para(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, ArrayList *java_para, Runtime *p_runtime);
 
-s32 call_method_c(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, Runtime *runtime);
+s32 call_method(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, Runtime *runtime);
 
 s32 execute_method_impl(MethodInfo *method, Runtime *runtime);
 
 s32 execute_method(MethodInfo *method, Runtime *runtime);
 
+/**
+* 从栈中取得实例对象，中间穿插着调用参数
+* @param cmr cmr
+* @param stack stack
+* @return ins
+*/
+static inline Instance *getInstanceInStack(ConstantMethodRef *cmr, RuntimeStack *stack) {
+    return (stack->sp - 1 - cmr->para_slots)->rvalue;
+}
+
+s32 exception_handle(RuntimeStack *stack, Runtime *runtime);
+
+s32 _jarray_check_exception(Instance *arr, s32 index, Runtime *runtime);
+
+void _null_throw_exception(RuntimeStack *stack, Runtime *runtime);
+
+void _nosuchmethod_check_exception(c8 *mn, RuntimeStack *stack, Runtime *runtime);
+
+void _nosuchfield_check_exception(c8 *mn, RuntimeStack *stack, Runtime *runtime);
+
+void _arrithmetic_throw_exception(RuntimeStack *stack, Runtime *runtime);
+
+void _checkcast_throw_exception(RuntimeStack *stack, Runtime *runtime);
+
+s32 invokedynamic_prepare(Runtime *runtime, BootstrapMethod *bootMethod, ConstantInvokeDynamic *cid);
+
+s32 checkcast(Runtime *runtime, Instance *ins, s32 typeIdx);
 
 //======================= jni =============================
 typedef struct _java_native_method {

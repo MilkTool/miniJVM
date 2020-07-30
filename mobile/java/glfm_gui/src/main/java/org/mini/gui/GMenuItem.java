@@ -7,16 +7,11 @@ package org.mini.gui;
 
 import org.mini.glfm.Glfm;
 import org.mini.glfw.Glfw;
+import org.mini.nanovg.Nanovg;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
 import static org.mini.nanovg.Gutil.toUtf8;
-import org.mini.nanovg.Nanovg;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgImagePattern;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgTextMetrics;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
  *
@@ -24,13 +19,13 @@ import static org.mini.nanovg.Nanovg.nvgTextMetrics;
  */
 public class GMenuItem extends GObject {
 
-    String text;
-    GImage img;
+    protected String text;
+    protected GImage img;
 
-    float[] lineh = new float[1];
-    boolean touched = false;
+    protected float[] lineh = new float[1];
+    protected boolean touched = false;
 
-    int redPoint;
+    protected int redPoint;
 
     GMenuItem(String t, GImage i, GMenu _parent) {
         text = t;
@@ -39,14 +34,10 @@ public class GMenuItem extends GObject {
 
     }
 
-    public int getType() {
-        return TYPE_MENUITEM;
-    }
-
     boolean isSelected() {
         if (parent instanceof GMenu) {
             GMenu menu = (GMenu) parent;
-            if (menu.getElements().indexOf(this) == menu.selectedIndex) {
+            if (menu.getElementsImpl().indexOf(this) == menu.selectedIndex) {
                 return true;
             }
         }
@@ -56,15 +47,15 @@ public class GMenuItem extends GObject {
     void setSelected() {
         if (parent instanceof GMenu) {
             GMenu menu = (GMenu) parent;
-            menu.selectedIndex = menu.getElements().indexOf(this);
+            menu.selectedIndex = menu.getElementsImpl().indexOf(this);
         }
     }
 
-    public void addNewMsgCount(int count) {
+    public void incMsgNew(int count) {
         redPoint += count;
     }
 
-    public void clearMsgNewCount() {
+    public void resetMsgNew() {
         redPoint = 0;
     }
 
@@ -82,22 +73,23 @@ public class GMenuItem extends GObject {
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         if (isInArea(x, y)) {
             if (phase == Glfm.GLFMTouchPhaseBegan) {
                 touched = true;
-                doAction();
             } else if (phase == Glfm.GLFMTouchPhaseEnded) {
                 touched = false;
+                doAction();
             }
         }
 
     }
 
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
 
         float cornerRadius = 4.0f;
-
+        nvgFontSize(vg, GToolkit.getStyle().getTextFontSize());
+        nvgFontFace(vg, GToolkit.getFontWord());
         nvgTextMetrics(vg, null, null, lineh);
 
         //touched item background

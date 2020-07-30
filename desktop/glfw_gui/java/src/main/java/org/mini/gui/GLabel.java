@@ -5,30 +5,21 @@
  */
 package org.mini.gui;
 
-import static org.mini.gui.GObject.LEFT;
-import static org.mini.nanovg.Gutil.toUtf8;
+import org.mini.glfm.Glfm;
 import org.mini.nanovg.Nanovg;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_LEFT;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_TOP;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFontFace;
-import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
-import static org.mini.nanovg.Nanovg.nvgTextBoxBoundsJni;
-import static org.mini.nanovg.Nanovg.nvgTextBoxJni;
-import static org.mini.nanovg.Nanovg.nvgTextJni;
-import static org.mini.nanovg.Nanovg.nvgTextMetrics;
+
+import static org.mini.nanovg.Gutil.toUtf8;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GLabel extends GObject {
 
-    String text;
-    byte[] text_arr;
-    char preicon;
-    float[] lineh = {0};
+    protected byte[] text_arr;
+    protected char preicon;
+    protected float[] lineh = {0};
+    protected boolean pressed;
 
     int align = NVG_ALIGN_LEFT | NVG_ALIGN_TOP;
 
@@ -36,7 +27,7 @@ public class GLabel extends GObject {
     int showMode = MODE_SINGLE_SHOW;
 
     public GLabel() {
-
+        this("",0f,0f,1f,1f);
     }
 
     public GLabel(String text, int left, int top, int width, int height) {
@@ -47,11 +38,10 @@ public class GLabel extends GObject {
         setText(text);
         setLocation(left, top);
         setSize(width, height);
+        setColor(GToolkit.getStyle().getTextFontColor());
+        setFontSize(GToolkit.getStyle().getTextFontSize());
     }
 
-    public int getType() {
-        return TYPE_LABEL;
-    }
 
     public void setShowMode(int m) {
         this.showMode = m;
@@ -66,26 +56,64 @@ public class GLabel extends GObject {
         align = ali;
     }
 
-    public final void setText(String text) {
+    public void setText(String text) {
         this.text = text;
         text_arr = toUtf8(text);
+    }
+
+    public String getText() {
+        return text;
     }
 
     public void setIcon(char icon) {
         preicon = icon;
     }
 
+
+    @Override
+    public void mouseButtonEvent(int button, boolean pressed, int x, int y) {
+        if (isInArea(x, y)) {
+            if (pressed) {
+                this.pressed = true;
+                parent.setFocus(this);
+            } else {
+                this.pressed = false;
+                doAction();
+            }
+        }
+    }
+
+    @Override
+    public void cursorPosEvent(int x, int y) {
+        if (!isInArea(x, y)) {
+            pressed = false;
+        }
+    }
+
+    @Override
+    public void touchEvent(int touchid, int phase, int x, int y) {
+        if (isInArea(x, y)) {
+            if (phase == Glfm.GLFMTouchPhaseBegan) {
+                pressed = true;
+            } else if (phase == Glfm.GLFMTouchPhaseEnded) {
+                doAction();
+                pressed = false;
+            } else if (!isInArea(x, y)) {
+                pressed = false;
+            }
+        }
+    }
+
     /**
-     *
      * @param vg
      * @return
      */
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();
         float h = getH();
-        nvgTextMetrics(vg, null, null, lineh);
+
 
         if (showMode == MODE_MULTI_SHOW) {
             drawMultiText(vg, x, y, w, h);
@@ -97,15 +125,15 @@ public class GLabel extends GObject {
 
     void drawLine(long vg, float x, float y, float w, float h) {
         //NVG_NOTUSED(w);
-        nvgFontSize(vg, GToolkit.getStyle().getTextFontSize());
+        nvgFontSize(vg, fontSize);
         nvgFontFace(vg, GToolkit.getFontWord());
-        nvgFillColor(vg, GToolkit.getStyle().getTextFontColor());
+        nvgFillColor(vg, color);
 
         nvgTextAlign(vg, align);
         if (text_arr != null) {
             float dx, dy;
-            dx = x + 2;
-            dy = y + 2;
+            dx = x;
+            dy = y;
             if ((align & Nanovg.NVG_ALIGN_CENTER) != 0) {
                 dx += w * .5f;
             } else if ((align & Nanovg.NVG_ALIGN_RIGHT) != 0) {
@@ -124,46 +152,23 @@ public class GLabel extends GObject {
 
     void drawMultiText(long vg, float x, float y, float w, float h) {
 
-        nvgFontSize(vg, GToolkit.getStyle().getTextFontSize());
-        nvgFillColor(vg, GToolkit.getStyle().getTextFontColor());
+        nvgFontSize(vg, fontSize);
+        nvgFillColor(vg, color);
         nvgFontFace(vg, GToolkit.getFontWord());
+        nvgTextMetrics(vg, null, null, lineh);
 
         nvgTextAlign(vg, align);
-        float[] area = new float[]{x + 2f, y + 2f, w - 4f, h - 4f};
         float dx, dy;
-        dx = area[LEFT];
-        dy = area[TOP];
+        dx = x;
+        dy = y;
         if ((align & Nanovg.NVG_ALIGN_MIDDLE) != 0) {
             dy += lineh[0];
         } else if ((align & Nanovg.NVG_ALIGN_BOTTOM) != 0) {
-            dy += GToolkit.getStyle().getTextFontSize();
+            dy += fontSize;
         }
-//        if ((align & Nanovg.NVG_ALIGN_RIGHT) != 0) {
-//            dx = area[LEFT] + area[WIDTH];
-//        } else if ((align & Nanovg.NVG_ALIGN_CENTER) != 0) {
-//            dx = area[LEFT] + area[WIDTH] / 2;
-//        } else {
-//            dx = area[LEFT];
-//        }
-//        if ((align & Nanovg.NVG_ALIGN_BOTTOM) != 0) {
-//            dy = area[TOP] + area[HEIGHT];
-//        } else if ((align & Nanovg.NVG_ALIGN_MIDDLE) != 0) {
-//            dy = area[TOP] + area[HEIGHT] / 2;
-//        } else {
-//            dy = area[TOP];
-//        }
 
         if (text_arr != null) {
-//            float[] bond = new float[4];
-//            nvgTextBoxBoundsJni(vg, dx, dy, area[WIDTH], text_arr, 0, text_arr.length, bond);
-//            bond[WIDTH] -= bond[LEFT];
-//            bond[HEIGHT] -= bond[TOP];
-//            bond[LEFT] = bond[TOP] = 0;
-//
-//            if (bond[HEIGHT] > area[HEIGHT]) {
-//                dy -= bond[HEIGHT] - area[HEIGHT];
-//            }
-            nvgTextBoxJni(vg, dx, dy, area[WIDTH], text_arr, 0, text_arr.length);
+            nvgTextBoxJni(vg, dx, dy, w, text_arr, 0, text_arr.length);
         }
     }
 

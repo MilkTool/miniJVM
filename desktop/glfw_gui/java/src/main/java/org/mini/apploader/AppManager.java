@@ -5,35 +5,19 @@
  */
 package org.mini.apploader;
 
+import org.mini.gui.*;
+import org.mini.gui.event.*;
+import org.mini.layout.UITemplate;
+import org.mini.layout.XContainer;
+import org.mini.layout.XEventHandler;
+import org.mini.layout.XViewSlot;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.List;
-import org.mini.gui.GApplication;
-import org.mini.gui.GButton;
-import org.mini.gui.GForm;
-import org.mini.gui.GGraphics;
-import org.mini.gui.GImage;
-import org.mini.gui.GImageItem;
-import org.mini.gui.GLabel;
-import org.mini.gui.GLanguage;
-import org.mini.gui.GList;
-import org.mini.gui.GListItem;
-import org.mini.gui.GMenu;
-import org.mini.gui.GObject;
-import org.mini.gui.GPanel;
-import org.mini.gui.GTextBox;
-import org.mini.gui.GTextField;
-import org.mini.gui.GToolkit;
-import org.mini.gui.GViewPort;
-import org.mini.gui.event.GActionListener;
-import org.mini.gui.event.GKeyboardShowListener;
-import org.mini.gui.event.GPhotoPickedListener;
-import org.mini.gui.event.GStateChangeListener;
-import org.mini.guijni.GuiCallBack;
 
 /**
- *
  * @author Gust
  */
 public class AppManager extends GApplication {
@@ -46,6 +30,7 @@ public class AppManager extends GApplication {
     static final String APP_DELETE_BTN = "APP_DELETE_BTN";
 
     static final String STR_EXIT = "Exit";
+    static final String STR_TITLE = "APP MANAGER";
     static final String STR_START_WEB_SRV_FOR_UPLOAD = "Lan webserver for upload jar";
     static final String STR_DOWN_APP_FROM_WEB = "Download app from website:";
     static final String STR_DOWNLOAD = "Download";
@@ -67,9 +52,11 @@ public class AppManager extends GApplication {
     static final String STR_UPLOAD_FILE = "Uploaded file";
     static final String STR_SUCCESS = "Success";
     static final String STR_FAIL = "Fail";
+    static final String STR_OPEN_APP_FAIL = "Open app failed";
 
     static {
         GLanguage.addString(STR_EXIT, new String[]{STR_EXIT, "退出", "退出"});
+        GLanguage.addString(STR_TITLE, new String[]{STR_TITLE, "APP 管理器", "APP 管理器"});
         GLanguage.addString(STR_START_WEB_SRV_FOR_UPLOAD, new String[]{STR_START_WEB_SRV_FOR_UPLOAD, "启动Web服务器上传", "啟動Web伺服器上傳"});
         GLanguage.addString(STR_DOWN_APP_FROM_WEB, new String[]{STR_DOWN_APP_FROM_WEB, "从网站下载App", "從網站下載App"});
         GLanguage.addString(STR_DOWNLOAD, new String[]{STR_DOWNLOAD, "下载", "下載"});
@@ -90,64 +77,62 @@ public class AppManager extends GApplication {
         GLanguage.addString(STR_SERVER_STOPED, new String[]{STR_SERVER_STOPED, "服务器已停止", "伺服器已停止"});
         GLanguage.addString(STR_UPLOAD_FILE, new String[]{STR_UPLOAD_FILE, "文件上传结束", "文件上傳結束"});
         GLanguage.addString(STR_SUCCESS, new String[]{STR_SUCCESS, "成功", "成功"});
-        GLanguage.addString(STR_FAIL, new String[]{STR_FAIL, "失敗", "失败"});
+        GLanguage.addString(STR_FAIL, new String[]{STR_FAIL, "失败", "失敗"});
+        GLanguage.addString(STR_OPEN_APP_FAIL, new String[]{STR_OPEN_APP_FAIL, "打开应用失败", "打開應用失敗"});
     }
 
     static AppManager instance = new AppManager();
 
-    GApplication preApp;
+//    GApplication preApp;
 
     GForm mgrForm;
-    GMenu menu;
 
-    GPanel mainPanel;
-    GImage logoImg;
+    GViewSlot mainSlot;
+
+    GPanel mangePanel;
     //
     GList appList;
     GViewPort contentView;
     GListItem curSelectedItem;
+    AppmEventHandler eventHandler;
 
     MiniHttpServer webServer;
 
     //
     static final int PICK_PHOTO = 101, PICK_CAMERA = 102, PICK_QR = 103, PICK_HEAD = 104;
 
-    static float menuH = 60, pad = 4, inputH = 60, addW = 60, addH = 30, sendW = 60, devW, devH;
+    static float devW, devH;
 
     static public AppManager getInstance() {
         return instance;
     }
 
     public void active() {
-        if (GuiCallBack.getInstance().getApplication() != this) {
-            preApp = GuiCallBack.getInstance().getApplication();
-        }
+//        if (GCallBack.getInstance().getApplication() != this) {
+//            preApp = GCallBack.getInstance().getApplication();
+//        }
         if (webServer != null) {
             webServer.stopServer();
         }
-        GuiCallBack.getInstance().setApplication(this);
+        GCallBack.getInstance().setApplication(this);
         reloadAppList();
     }
 
     @Override
-    public GForm getForm(GApplication app) {
+    public GForm getForm() {
         mgrForm = new GForm() {
 
             @Override
             public void init() {
                 super.init();
 
-                final GuiCallBack ccb = GuiCallBack.getInstance();
+                final GCallBack ccb = GCallBack.getInstance();
                 devW = ccb.getDeviceWidth();
                 devH = ccb.getDeviceHeight();
                 //System.out.println("devW , devH " + devW + " , " + devH);
 
                 GForm.hideKeyboard();
                 GLanguage.setCurLang(AppLoader.getDefaultLang());
-
-                setFps(30f);
-
-                logoImg = GImage.createImageFromJar("/res/img/logo128.png");
 
                 setPickListener(new GPhotoPickedListener() {
                     @Override
@@ -189,99 +174,66 @@ public class AppManager extends GApplication {
                     }
                 });
 
-                add(getMainPanel());
+                add(getMainSlot());
 
             }
         };
         return mgrForm;
     }
 
-    GPanel getMainPanel() {
+    GViewSlot getMainSlot() {
 
-        mainPanel = new GPanel();
-        mainPanel.setLocation(0, 0);
-        mainPanel.setSize(devW * 2, devH);
-        mgrForm.add(mainPanel);
+        String xmlStr = "";
+        try {
+            xmlStr = new String(GToolkit.readFileFromJar("/res/ui/AppManager.xml"), "utf-8");
+        } catch (Exception e) {
+        }
 
-        float y = pad;
-        GButton exitbtn = new GButton(GLanguage.getString(STR_EXIT), pad, pad, addW, addH);
-        mainPanel.add(exitbtn);
-        exitbtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                if (preApp != null) {
-                    GuiCallBack.getInstance().setApplication(preApp);
-                }
-            }
-        });
-        y += exitbtn.getH() + pad;
+        UITemplate uit = new UITemplate(xmlStr);
+        for (String s : uit.getVariable()) {
+            uit.setVar(s, GLanguage.getString(s));
+        }
 
-        GList langList = new GList(pad, y, devW - pad * 2, 35);
-        //langList.setShowMode(GList.MODE_MULTI_SHOW);
-        langList.setBgColor(GToolkit.getStyle().getFrameBackground());
-        GListItem item;
-        item = new GListItem(null, "English");
-        item.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                GLanguage.setCurLang(GLanguage.ID_ENG);
-                AppLoader.setDefaultLang(GLanguage.ID_ENG);
-                AppManager.getInstance().active();
-            }
-        });
-        langList.addItem(item);
-        item = new GListItem(null, "简体中文");
-        item.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                GLanguage.setCurLang(GLanguage.ID_CHN);
-                AppLoader.setDefaultLang(GLanguage.ID_CHN);
-                AppManager.getInstance().active();
-            }
-        });
-        langList.addItem(item);
-        item = new GListItem(null, "繁體中文");
-        item.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                GLanguage.setCurLang(GLanguage.ID_CHT);
-                AppLoader.setDefaultLang(GLanguage.ID_CHT);
-                AppManager.getInstance().active();
-            }
-        });
-        langList.addItem(item);
-        mainPanel.add(langList);
+        eventHandler = new AppmEventHandler();
+        XContainer container = (XViewSlot) XContainer.parseXml(uit.parse());
+        container.build((int) devW, (int) (devH), eventHandler);
+        mainSlot = (GViewSlot) (container.getGui());
+        appList = (GList) mainSlot.findByName("LIST_APP");
+        contentView = (GViewPort) mainSlot.findByName("VP_CONTENT");
+        mangePanel = (GPanel) mainSlot.findByName("PAN_MGR");
+        GList langList = (GList) mainSlot.findByName("LIST_LANG");
         langList.setSelectedIndex(AppLoader.getDefaultLang());
-        y += 35 + pad;
 
-        GLabel downLab = new GLabel(GLanguage.getString(STR_DOWN_APP_FROM_WEB), pad, y, devW - pad * 2, addH);
-        downLab.setAlign(GGraphics.LEFT | GGraphics.VCENTER);
-        mainPanel.add(downLab);
-        y += downLab.getH() + pad;
-
-        GTextField downtextfd = new GTextField("http://bb.egls.cn:8080/down/BiBiX.jar", "application jar url", pad, y, devW - pad * 3 - addW * 2, addH);
-        mainPanel.add(downtextfd);
-        GButton downbtn = new GButton(GLanguage.getString(STR_DOWNLOAD), devW - addW * 2 - pad, y, addW * 2, addH);
-        mainPanel.add(downbtn);
-        downbtn.setActionListener(new GActionListener() {
+        mgrForm.setSizeChangeListener(new GSizeChangeListener() {
             @Override
-            public void action(GObject gobj) {
+            public void onSizeChange(int width, int height) {
+                container.reSize(width, height);
+            }
+        });
+        reloadAppList();
+        return this.mainSlot;
+    }
+
+    class AppmEventHandler extends XEventHandler {
+        @Override
+        public void action(GObject gobj, String cmd) {
+            String name = gobj.getName();
+            if ("APP_DELETE_BTN".equals(name)) {
+                String appName = curSelectedItem.getLabel();
+                AppLoader.removeApp(appName);
+                mainPanelShowLeft();
+                reloadAppList();
+            } else if ("BT_DOWN".equals(name)) {
+                GTextObject downtextfd = (GTextObject) mgrForm.findByName("INPUT_URL");
                 String url = downtextfd.getText();
 
                 MiniHttpClient hc = new MiniHttpClient(url, getDownloadCallback());
                 hc.start();
-            }
-        });
-        y += addH + pad;
-        GLabel uploadLab = new GLabel(GLanguage.getString(STR_START_WEB_SRV_FOR_UPLOAD), pad, y, devW - pad * 3 - addW * 2, addH);
-        uploadLab.setAlign(GGraphics.LEFT | GGraphics.VCENTER);
-        mainPanel.add(uploadLab);
-
-        GButton uploadbtn = new GButton(GLanguage.getString(STR_START), devW - addW * 2 - pad, y, addW * 2, addH);
-        mainPanel.add(uploadbtn);
-        uploadbtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
+            } else if ("BT_BACK".equals(name)) {
+                mainPanelShowLeft();
+            } else if ("BT_STARTWEB".equals(name)) {
+                GButton uploadbtn = (GButton) gobj;
+                GLabel uploadLab = (GLabel) mgrForm.findByName("LAB_WEBSRV");
                 if (webServer != null) {
                     webServer.stopServer();
                 }
@@ -306,125 +258,18 @@ public class AppManager extends GApplication {
                     uploadLab.setText(GLanguage.getString(STR_WEB_LISTEN_ON) + webServer.getPort());
                     GForm.addMessage(GLanguage.getString(STR_SERVER_STARTED));
                 }
-            }
-        });
-        y += addH + pad;
-
-        GLabel appsLab = new GLabel(GLanguage.getString(STR_APP_LIST), pad, y, devW - pad * 3 - addW * 2, addH);
-        appsLab.setAlign(GGraphics.LEFT | GGraphics.VCENTER);
-        mainPanel.add(appsLab);
-        y += addH + pad;
-
-        GTextField search = new GTextField("", "Search", pad, y, devW - pad * 2, addH);
-        search.setBoxStyle(GTextField.BOX_STYLE_SEARCH);
-        search.setStateChangeListener(new GStateChangeListener() {
-            @Override
-            public void onStateChange(GObject gobj) {
-                String str = search.getText();
-                if (appList != null) {
-                    appList.filterLabelWithKey(str);
-                    //System.out.println("key=" + str);
-                }
-            }
-        });
-        mainPanel.add(search);
-        y += addH + pad;
-
-        appList = new GList(0, y, devW, devH - y);
-        appList.setShowMode(GList.MODE_MULTI_SHOW);
-        appList.setItemHeight(50);
-        mainPanel.add(appList);
-
-        //right
-        float x1 = devW + pad;
-        y = pad;
-        GButton back2listBtn = new GButton("< " + GLanguage.getString(STR_BACK), x1, y, addW, addH);
-        mainPanel.add(back2listBtn);
-        back2listBtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                mainPanelShowLeft();
-            }
-        });
-        y += addH + pad;
-
-        contentView = new GViewPort();
-        contentView.setLocation(devW, y);
-        contentView.setSize(devW, devH - y);
-        buildContentView();
-        mainPanel.add(contentView);
-
-        mgrForm.setKeyshowListener(new GKeyboardShowListener() {
-            @Override
-            public void keyboardShow(boolean show, float kx, float ky, float kw, float kh) {
-                if (show) {
-                } else {
-                }
-                GObject.flush();
-            }
-        });
-
-        reloadAppList();
-
-        return mainPanel;
-    }
-
-    void buildContentView() {
-        float y = pad, bigBtnH = 35;
-        GLabel nameLab = new GLabel("", pad, y, devW - pad * 2, bigBtnH);
-        nameLab.setAlign(GGraphics.HCENTER | GGraphics.VCENTER);
-        nameLab.setName(APP_NAME_LABEL);
-        contentView.add(nameLab);
-        y += nameLab.getH() + pad;
-
-        GImage img = curSelectedItem == null ? null : curSelectedItem.getImg();
-        GImageItem imgItem = new GImageItem(img);
-        imgItem.setName(APP_ICON_ITEM);
-        imgItem.setLocation(pad, y);
-        imgItem.setSize(128, 128);
-        contentView.add(imgItem);
-        y += imgItem.getH() + pad;
-
-        GTextBox resume = new GTextBox("", "", pad, y, devW - pad * 2, 150);
-        resume.setName(APP_DESC_LABEL);
-        resume.setEditable(false);
-        contentView.add(resume);
-        y += resume.getH() + pad;
-
-        GButton runBtn = new GButton(GLanguage.getString(STR_RUN), pad, y, devW - pad * 2, bigBtnH);
-        runBtn.setName(APP_RUN_BTN);
-        contentView.add(runBtn);
-        runBtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
+            } else if ("APP_RUN_BTN".equals(name)) {
                 if (curSelectedItem != null) {
                     String appName = curSelectedItem.getLabel();
                     if (appName != null) {
                         AppLoader.runApp(appName);
                     }
                 }
-            }
-        });
-        y += bigBtnH + pad;
-
-        GButton defaultBtn = new GButton(GLanguage.getString(STR_SET_AS_BOOT), pad, y, devW - pad * 2, bigBtnH);
-        contentView.add(defaultBtn);
-        defaultBtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
+            } else if ("APP_SET_BOOT_BTN".equals(name)) {
                 if (curSelectedItem != null) {
                     AppLoader.setBootApp(curSelectedItem.getLabel());
                 }
-            }
-        });
-        y += bigBtnH + pad;
-
-        GButton upgradeBtn = new GButton(GLanguage.getString(STR_UPGRADE), pad, y, devW - pad * 2, bigBtnH);
-        upgradeBtn.setName(APP_UPGRADE_BTN);
-        contentView.add(upgradeBtn);
-        upgradeBtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
+            } else if ("APP_UPGRADE_BTN".equals(name)) {
                 if (curSelectedItem != null) {
                     String appName = curSelectedItem.getLabel();
                     if (appName != null) {
@@ -435,17 +280,7 @@ public class AppManager extends GApplication {
                         }
                     }
                 }
-            }
-        });
-        y += bigBtnH + pad;
-
-        GButton deleteBtn = new GButton(GLanguage.getString(STR_DELETE), pad, y, devW - pad * 2, bigBtnH);
-        deleteBtn.setName(APP_DELETE_BTN);
-        deleteBtn.setBgColor(128, 16, 8, 255);
-        contentView.add(deleteBtn);
-        deleteBtn.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
+            } else if ("APP_DELETE_BTN".equals(name)) {
                 if (curSelectedItem != null) {
                     String appName = curSelectedItem.getLabel();
                     if (appName != null) {
@@ -454,10 +289,34 @@ public class AppManager extends GApplication {
                         mainPanelShowLeft();
                     }
                 }
-
+            } else if ("LI_ENG".equals(name)) {
+                System.out.println("Englist" + gobj);
+                GLanguage.setCurLang(GLanguage.ID_ENG);
+                AppLoader.setDefaultLang(GLanguage.ID_ENG);
+                AppManager.getInstance().active();
+            } else if ("LI_CHS".equals(name)) {
+                GLanguage.setCurLang(GLanguage.ID_CHN);
+                AppLoader.setDefaultLang(GLanguage.ID_CHN);
+                AppManager.getInstance().active();
+            } else if ("LI_CHT".equals(name)) {
+                GLanguage.setCurLang(GLanguage.ID_CHT);
+                AppLoader.setDefaultLang(GLanguage.ID_CHT);
+                AppManager.getInstance().active();
             }
-        });
-        y += bigBtnH + pad;
+        }
+
+
+        public void onStateChange(GObject gobj, String cmd) {
+            String name = gobj.getName();
+            if ("INPUT_SEARCH".equals(name)) {
+                GTextObject search = (GTextObject) gobj;
+                String str = search.getText();
+                if (appList != null) {
+                    appList.filterLabelWithKey(str);
+                    //System.out.println("key=" + str);
+                }
+            }
+        }
     }
 
     MiniHttpClient.DownloadCompletedHandle getDownloadCallback() {
@@ -486,7 +345,7 @@ public class AppManager extends GApplication {
         if (appList == null) {
             return;
         }
-        appList.removeItemAll();
+        appList.clear();
         List<String> list = AppLoader.getAppList();
         if (list != null && list.size() > 0) {
             for (String appName : list) {
@@ -498,15 +357,15 @@ public class AppManager extends GApplication {
                         img = GImage.createImage(iconBytes);
                     }
                     GListItem item = new GListItem(img, appName) {
-                        public boolean update(long vg) {
-                            super.update(vg);
+                        public boolean paint(long vg) {
+                            super.paint(vg);
                             if (getLabel() != null && getLabel().equals(AppLoader.getBootApp())) {
                                 GToolkit.drawRedPoint(vg, "v", getX() + getW() - 20, getY() + getH() * .5f, 10);
                             }
                             return true;
                         }
                     };
-                    appList.addItem(item);
+                    appList.add(item);
                     item.setActionListener(new GActionListener() {
                         @Override
                         public void action(GObject gobj) {
@@ -535,24 +394,20 @@ public class AppManager extends GApplication {
 
         //re set image
         GImageItem icon = (GImageItem) contentView.findByName(APP_ICON_ITEM);
-        icon.setImg(curSelectedItem.getImg());
-        contentView.reBoundle();
+        if (curSelectedItem != null) icon.setImg(curSelectedItem.getImg());
+        contentView.reSize();
     }
 
     void mainPanelShowLeft() {
-        float panelX = mainPanel.getX();
-        float panelY = mainPanel.getY();
-        mgrForm.inertiaEvent(panelX, panelY, panelX + 200, panelY, 100);
         if (curSelectedItem != null) {
             appList.setSelectedIndex(-1);
             curSelectedItem = null;
         }
+        mainSlot.moveTo(0, 200);
     }
 
     void mainPanelShowRight() {
-        float panelX = mainPanel.getX();
-        float panelY = mainPanel.getY();
-        mgrForm.inertiaEvent(panelX + 200, panelY, panelX, panelY, 100);
+        mainSlot.moveTo(1, 200);
     }
 
 }

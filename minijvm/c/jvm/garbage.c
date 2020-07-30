@@ -74,13 +74,16 @@ s32 garbage_collector_create() {
     s32 rc = thrd_create(&collector->_garbage_thread, _collect_thread_run, NULL);
     if (rc != thrd_success) {
         jvm_printf("ERROR: garbage thread can't create is %d\n", rc);
+    } else {
+        //启动垃圾回收
+        garbage_collection_resume();
     }
     return 0;
 }
 
 void garbage_collector_destory() {
+    garbage_collection_stop();
     garbage_thread_lock();
-    garbage_thread_stop();
     while (collector->_garbage_thread_status != GARBAGE_THREAD_DEAD) {
         garbage_thread_timedwait(50);
     }
@@ -140,16 +143,22 @@ void garbage_thread_unlock() {
     mtx_unlock(&collector->garbagelock.mutex_lock);
 }
 
-void garbage_thread_pause() {
+void garbage_collection_pause() {
+    garbage_thread_lock();
     collector->_garbage_thread_status = GARBAGE_THREAD_PAUSE;
+    garbage_thread_unlock();
 }
 
-void garbage_thread_resume() {
+void garbage_collection_resume() {
+    garbage_thread_lock();
     collector->_garbage_thread_status = GARBAGE_THREAD_NORMAL;
+    garbage_thread_unlock();
 }
 
-void garbage_thread_stop() {
+void garbage_collection_stop() {
+    garbage_thread_lock();
     collector->_garbage_thread_status = GARBAGE_THREAD_STOP;
+    garbage_thread_unlock();
 }
 
 void garbage_thread_wait() {
@@ -265,12 +274,12 @@ void garbage_dump_runtime() {
 
         jvm_printf("[INFO]============ runtime dump [%llx] ============\n", (s64) (intptr_t) runtime);
         s32 j;
-        StackEntry entry;
+        StackEntry *entry;
         RuntimeStack *stack = runtime->stack;
         for (j = 0; j < stack_size(stack); j++) {
-            peek_entry(stack->store + j, &entry);
-            if (is_ref(&entry)) {
-                __refer ref = entry_2_refer(&entry);
+            entry = stack->store + j;
+            if (entry->rvalue) {
+                __refer ref = entry->rvalue;
                 if (ref) {
                     utf8_clear(name);
                     _getMBName(ref, name);
@@ -279,19 +288,7 @@ void garbage_dump_runtime() {
                 }
             }
         }
-        while (runtime) {
-            for (j = 0; j < runtime->localvar_slots; j++) {
-                LocalVarItem *item = &runtime->localvar[j];
-                if (item->type & STACK_ENTRY_REF) {
-                    __refer ref = item->rvalue;
-                    utf8_clear(name);
-                    _getMBName(ref, name);
-                    jvm_printf("   %s[%llx] \n", utf8_cstr(name), (s64) (intptr_t) ref);
-                    utf8_destory(name);
-                }
-            }
-            runtime = runtime->son;
-        }
+
     }
 }
 
@@ -343,6 +340,7 @@ s32 _collect_thread_run(void *para) {
         }
     }
     collector->_garbage_thread_status = GARBAGE_THREAD_DEAD;
+    thrd_exit(0);
     return 0;
 }
 
@@ -365,6 +363,8 @@ s64 garbage_collect() {
 
     if (_garbage_pause_the_world() != 0) {
         _garbage_resume_the_world();
+        garbage_thread_unlock();
+        jvm_printf("gc canceled ");
         return -1;
     }
 //    jvm_printf("garbage_pause_the_world %lld\n", (currentTimeMillis() - time));
@@ -506,7 +506,7 @@ s32 _garbage_pause_the_world(void) {
 
     }
     //调试线程
-    if (JDWP_DEBUG) {
+    if (jdwp_enable) {
         Runtime *runtime = jdwpserver.runtime;
         if (runtime) {
             jthread_suspend(runtime);
@@ -536,7 +536,7 @@ s32 _garbage_resume_the_world() {
     }
 
     //调试线程
-    if (JDWP_DEBUG) {
+    if (jdwp_enable) {
         Runtime *runtime = jdwpserver.runtime;
         if (runtime) {
             jthread_resume(runtime);
@@ -549,7 +549,8 @@ s32 _garbage_resume_the_world() {
 s32 _checkAndWaitThreadIsSuspend(Runtime *runtime) {
     while (!(runtime->threadInfo->is_suspend) &&
            !(runtime->threadInfo->is_blocking)) { // if a native method blocking , must set thread status is wait before enter native method
-        garbage_thread_timedwait(100);
+        garbage_thread_notifyall();
+        garbage_thread_timedwait(1);
         if (collector->_garbage_thread_status != GARBAGE_THREAD_NORMAL) {
             return -1;
         }
@@ -592,7 +593,7 @@ void _garbage_copy_refer() {
     }
 //    arraylist_iter_safe(thread_list, _list_iter_iter_copy, NULL);
     //调试线程
-    if (JDWP_DEBUG) {
+    if (jdwp_enable) {
         Runtime *runtime = jdwpserver.runtime;
         if (runtime) {
             _garbage_copy_refer_thread(runtime);
@@ -613,17 +614,17 @@ void _garbage_copy_refer() {
 s32 _garbage_copy_refer_thread(Runtime *pruntime) {
     arraylist_push_back_unsafe(collector->runtime_refer_copy, pruntime->threadInfo->jthread);
 
-    s32 i, imax;
-    StackEntry entry;
     Runtime *runtime = pruntime;
     RuntimeStack *stack = runtime->stack;
-    for (i = 0; i < stack_size(stack); i++) {
-        peek_entry(stack->store + i, &entry);
-        if (is_ref(&entry)) {
-            __refer ref = entry_2_refer(&entry);
-            if (ref) {
-                arraylist_push_back_unsafe(collector->runtime_refer_copy, ref);
-            }
+    //reset free stack space
+    memset(stack->sp, 0, sizeof(StackEntry) * (stack->max_size - stack_size(stack)));
+
+    s32 i, imax;
+    StackEntry *entry;
+    for (i = 0, imax = stack_size(stack); i < imax; i++) {
+        entry = stack->store + i;
+        if (entry->rvalue) {
+            arraylist_push_back_unsafe(collector->runtime_refer_copy, entry->rvalue);
         }
     }
     MemoryBlock *next = runtime->threadInfo->tmp_holder;
@@ -757,7 +758,7 @@ MemoryBlock *gc_is_alive(__refer ref) {
         }
     }
     if (!result) {
-        if (JDWP_DEBUG) {
+        if (jdwp_enable) {
             Runtime *runtime = jdwpserver.runtime;
             if (runtime) {
                 MemoryBlock *mb = runtime->threadInfo->objs_header;

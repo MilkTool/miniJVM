@@ -40,6 +40,12 @@ public class Nanovg {
     public static final int NVG_LIGHTER = 8;
     public static final int NVG_COPY = 9;
     public static final int NVG_XOR = 10;
+    public static final int NVG_IMAGE_GENERATE_MIPMAPS = 1<<0;
+    public static final int NVG_IMAGE_REPEATX = 1<<1;
+    public static final int NVG_IMAGE_REPEATY = 1<<2;
+    public static final int NVG_IMAGE_FLIPY = 1<<3;
+    public static final int NVG_IMAGE_PREMULTIPLIED = 1<<4;
+    public static final int NVG_IMAGE_NEAREST = 1<<5;
     public static final int NVG_ANTIALIAS = 1<<0;
     public static final int NVG_STENCIL_STROKES = 1<<1;
     public static final int NVG_DEBUG = 1<<2;
@@ -188,5 +194,9 @@ public class Nanovg {
     public static native int nvgTextBreakLinesJni(long pctx, byte[] pstring, int pstart, int pend, float pbreakRowWidth, long prows, int pmaxRows); //NVGcontext*/*ptr*/,const char*,int,int,float,NVGtextRow*/*ptr*/,int, //int
     public static native int nvgTextGlyphPositionsJni(long pctx, float px, float py, byte[] pstring, int pstart, int pend, long ppositions, int pmaxPositions); //NVGcontext*/*ptr*/,float,float,const char*,int,int,NVGglyphPosition*/*ptr*/,int, //int
 
+
+    static public int nvglCreateImageFromHandleGL3(long pctx, int ptextureId, int pw, int ph, int pflags) {
+        return Nanovg.nvglCreateImageFromHandleGLES3(pctx, ptextureId, pw, ph, pflags);
+    }
 }
 

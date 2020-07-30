@@ -5,14 +5,9 @@
  */
 package org.mini.gui;
 
-import org.mini.gui.event.GAppActiveListener;
-import org.mini.gui.event.GKeyboardShowListener;
-import org.mini.gui.event.GNotifyListener;
-import org.mini.gui.event.GPhotoPickedListener;
-import org.mini.guijni.GuiCallBack;
+import org.mini.gui.event.*;
 import org.mini.nanovg.Gutil;
 import org.mini.nanovg.Nanovg;
-import org.mini.nanovg.StbFont;
 
 import java.util.Timer;
 import java.util.TimerTask;
@@ -26,50 +21,51 @@ import static org.mini.nanovg.Nanovg.*;
  */
 public class GForm extends GViewPort {
 
-    String title;
-    long display; //glfw display
-    long vg; //nk contex
-    GuiCallBack callback;
-    static StbFont gfont;
-    float fps;
-    float fpsExpect = 30;
-    long last, count;
-    //
-    float pxRatio;
-
-    int fbWidth, fbHeight;
-    //
-    boolean premult;
-
-    GPhotoPickedListener pickListener;
-    GKeyboardShowListener keyshowListener;
-    GAppActiveListener activeListener;
-    GNotifyListener notifyListener;
-
-    //    final static List<Integer> pendingDeleteImage = Collections.synchronizedList(new ArrayList());
     final static Timer timer = new Timer(true);//用于更新画面，UI系统采取按需刷新的原则
 
     static GCmdHandler cmdHandler = new GCmdHandler();
+    private boolean inited = false;
+
+    protected String title;
+    protected long display; //glfw display
+    protected long vg; //nk contex
+    protected GCallBack callback;
+    protected float pxRatio;
+    //
+    //
+
+    protected GPhotoPickedListener pickListener;
+    protected GKeyboardShowListener keyshowListener;
+    protected GAppActiveListener activeListener;
+    protected GNotifyListener notifyListener;
+    protected GSizeChangeListener sizeChangeListener;
 
     public GForm() {
         this.title = title;
-        callback = GuiCallBack.getInstance();
+        callback = GCallBack.getInstance();
+
+        display = callback.getDisplay();
+        vg = callback.getNvContext();
+        if (vg == 0) {
+            System.out.println("callback.getNvContext() is null.");
+        }
+
+        int winWidth, winHeight;
+        winWidth = callback.getDeviceWidth();
+        winHeight = callback.getDeviceHeight();
+
+        pxRatio = callback.getDeviceRatio();
+
+
+        //System.out.println("fbWidth=" + fbWidth + "  ,fbHeight=" + fbHeight);
+        flush();
+        setLocation(0, 0);
+        setSize(winWidth, winHeight);
     }
 
-    public int getType() {
-        return TYPE_FORM;
-    }
 
-    public GuiCallBack getCallBack() {
+    public GCallBack getCallBack() {
         return this.callback;
-    }
-
-    static public void setGFont(StbFont pgfont) {
-        gfont = pgfont;
-    }
-
-    static public StbFont getGFont() {
-        return gfont;
     }
 
     public long getNvContext() {
@@ -92,41 +88,26 @@ public class GForm extends GViewPort {
         callback.setDisplayTitle(title);
     }
 
+    public boolean isInited() {
+        return inited;
+    }
+
     @Override
     public void init() {
-        display = callback.getDisplay();
-        vg = callback.getNvContext();
-        if (vg == 0) {
-            System.out.println("callback.getNvContext() is null.");
-        }
 
-        fbWidth = callback.getFrameBufferWidth();
-        fbHeight = callback.getFrameBufferHeight();
-        int winWidth, winHeight;
-        winWidth = callback.getDeviceWidth();
-        winHeight = callback.getDeviceHeight();
-
-        pxRatio = callback.getDeviceRatio();
-
-        setLocation(0, 0);
-        setSize(winWidth, winHeight);
-        //System.out.println("fbWidth=" + fbWidth + "  ,fbHeight=" + fbHeight);
-        flush();
+        inited = true;
     }
 
     public void display(long vg) {
 
-        long startAt, endAt, cost;
         try {
-            startAt = System.currentTimeMillis();
 
             // Update and render
+            int fbWidth, fbHeight;
+            fbWidth = callback.getFrameBufferWidth();
+            fbHeight = callback.getFrameBufferHeight();
             glViewport(0, 0, fbWidth, fbHeight);
-            if (premult) {
-                glClearColor(0, 0, 0, 0);
-            } else {
-                glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
-            }
+            glClearColor(0.3f, 0.3f, 0.32f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
             int winWidth, winHeight;
@@ -138,24 +119,12 @@ public class GForm extends GViewPort {
             Nanovg.nvgReset(vg);
             Nanovg.nvgResetScissor(vg);
             Nanovg.nvgScissor(vg, 0, 0, winWidth, winHeight);
-            update(vg);
+            paint(vg);
             cmdHandler.update(this);
             nvgEndFrame(vg);
 
-            //
-            count++;
-            endAt = System.currentTimeMillis();
-            cost = endAt - startAt;
-            if (cost > 1000) {
-                //System.out.println("fps:" + count);
-                fps = count;
-                last = endAt;
-                count = 0;
-            }
-//                if (cost < 1000 / fpsExpect) {
-//                    Thread.sleep((long) (1000 / fpsExpect - cost));
-//                }
             cmdHandler.process(this);
+            //
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -167,7 +136,6 @@ public class GForm extends GViewPort {
         nvgFontFace(vg, GToolkit.getFontWord());
         nvgTextAlign(vg, Nanovg.NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
 
-        GuiCallBack cb = (GuiCallBack) callback;
         float dx = 2, dy = 40;
         byte[] b;
         nvgFillColor(vg, nvgRGBA(255, 255, 255, 255));
@@ -193,16 +161,6 @@ public class GForm extends GViewPort {
         timer.schedule(tt_OnTouch, 0L);//, (long) (1000 / fpsExpect));
     }
 
-    /**
-     * @return the fps
-     */
-    public float getFps() {
-        return fps;
-    }
-
-    public void setFps(float fps) {
-        fpsExpect = fps;
-    }
 
     public void onPhotoPicked(int uid, String url, byte[] data) {
         if (pickListener != null) {
@@ -229,6 +187,15 @@ public class GForm extends GViewPort {
             keyshowListener.keyboardShow(visible, x, y, w, h);
         }
     }
+
+    public GSizeChangeListener getSizeChangeListener() {
+        return sizeChangeListener;
+    }
+
+    public void setSizeChangeListener(GSizeChangeListener sizeChangeListener) {
+        this.sizeChangeListener = sizeChangeListener;
+    }
+
 
     /**
      * @return the keyshowListener
@@ -259,6 +226,12 @@ public class GForm extends GViewPort {
     public void onNotify(String key, String val) {
         if (notifyListener != null) {
             notifyListener.onNotify(key, val);
+        }
+    }
+
+    public void onSizeChange(int width, int height) {
+        if (sizeChangeListener != null) {
+            sizeChangeListener.onSizeChange(width, height);
         }
     }
 
@@ -307,6 +280,10 @@ public class GForm extends GViewPort {
 
     public static void hideKeyboard() {
         cmdHandler.addCmd(GCmd.GCMD_HIDE_KEYBOARD);
+    }
+
+    public static void addCmd(GCmd cmd) {
+        cmdHandler.addCmd(cmd);
     }
 
     public float getRatio() {

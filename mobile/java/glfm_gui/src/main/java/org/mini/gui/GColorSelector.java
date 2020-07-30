@@ -6,50 +6,25 @@
 package org.mini.gui;
 
 import org.mini.glfm.Glfm;
-import static org.mini.gui.GObject.isInBoundle;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
-import static org.mini.nanovg.Nanovg.NVG_CCW;
-import static org.mini.nanovg.Nanovg.NVG_CW;
-import static org.mini.nanovg.Nanovg.NVG_HOLE;
-import static org.mini.nanovg.Nanovg.nvgArc;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgBoxGradient;
-import static org.mini.nanovg.Nanovg.nvgCircle;
-import static org.mini.nanovg.Nanovg.nvgClosePath;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgHSLA;
-import static org.mini.nanovg.Nanovg.nvgLineTo;
-import static org.mini.nanovg.Nanovg.nvgLinearGradient;
-import static org.mini.nanovg.Nanovg.nvgMoveTo;
-import static org.mini.nanovg.Nanovg.nvgPathWinding;
-import static org.mini.nanovg.Nanovg.nvgRadialGradient;
-import static org.mini.nanovg.Nanovg.nvgRect;
-import static org.mini.nanovg.Nanovg.nvgRestore;
-import static org.mini.nanovg.Nanovg.nvgRotate;
-import static org.mini.nanovg.Nanovg.nvgSave;
-import static org.mini.nanovg.Nanovg.nvgScissor;
-import static org.mini.nanovg.Nanovg.nvgStroke;
-import static org.mini.nanovg.Nanovg.nvgStrokeColor;
-import static org.mini.nanovg.Nanovg.nvgStrokeWidth;
-import static org.mini.nanovg.Nanovg.nvgTranslate;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GColorSelector extends GObject {
 
-    String text;
-    float curAngel;
-    float oldAngel;
-    float centX;
-    float centY;
-    float r_big, r_small;
-    float selectX, selectY;
+    protected String text;
+    protected float curAngel;
+    protected float oldAngel;
+    protected float centX;
+    protected float centY;
+    protected float r_big, r_small;
+    protected float selectX, selectY;
 
     public GColorSelector() {
-
+        this(0f, 0f, 0f, 1f, 1f);
     }
 
     public GColorSelector(float pos, int left, int top, int width, int height) {
@@ -65,9 +40,6 @@ public class GColorSelector extends GObject {
 
     }
 
-    public int getType() {
-        return TYPE_COLORSELECTOR;
-    }
 
     @Override
     public void cursorPosEvent(int x, int y) {
@@ -102,7 +74,7 @@ public class GColorSelector extends GObject {
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         if (isInArea(x, y)) {
             if (phase != Glfm.GLFMTouchPhaseBegan) {
                 float offX = x - (getX() + centX);
@@ -131,11 +103,10 @@ public class GColorSelector extends GObject {
     }
 
     /**
-     *
      * @param vg
      * @return
      */
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();
@@ -157,7 +128,7 @@ public class GColorSelector extends GObject {
         r_big = r1;
         r0 = r1 - 20.0f;
         r_small = r0;
-        aeps = 0.5f / r1;	// half a pixel arc length in radians (2pi cancels out).
+        aeps = 0.5f / r1;    // half a pixel arc length in radians (2pi cancels out).
 
         for (i = 0; i < 6; i++) {
             float a0 = (float) (i / 6.0f * Math.PI * 2.0f - aeps);

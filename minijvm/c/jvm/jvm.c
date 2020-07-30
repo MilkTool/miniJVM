@@ -34,28 +34,13 @@ void thread_unboundle(Runtime *runtime) {
 }
 
 void print_exception(Runtime *runtime) {
-    __refer ref = pop_ref(runtime->stack);
-    Instance *ins = (Instance *) ref;
-    Utf8String *getStackFrame_name = utf8_create_c("getCodeStack");
-    Utf8String *getStackFrame_type = utf8_create_c("()Ljava/lang/String;");
-    MethodInfo *getStackFrame = find_methodInfo_by_name(ins->mb.clazz->name, getStackFrame_name,
-                                                        getStackFrame_type, runtime);
-    utf8_destory(getStackFrame_name);
-    utf8_destory(getStackFrame_type);
-    if (getStackFrame) {
-        push_ref(runtime->stack, ins);
-        s32 ret = execute_method_impl(getStackFrame, runtime);
-        if (ret != RUNTIME_STATUS_NORMAL) {
-            ins = pop_ref(runtime->stack);
-            return;
-        }
-        ins = (Instance *) pop_ref(runtime->stack);
-        Utf8String *str = utf8_create();
-        jstring_2_utf8(ins, str);
-        printf("%s\n", utf8_cstr(str));
-        utf8_destory(str);
-    } else {
-        printf("ERROR: %s\n", utf8_cstr(ins->mb.clazz->name));
+    if (runtime) {
+        Utf8String *stacktrack = utf8_create();
+        getRuntimeStack(runtime, stacktrack);
+        jvm_printf("%s\n", utf8_cstr(stacktrack));
+        utf8_destory(stacktrack);
+
+        runtime_clear_stacktrack(runtime);
     }
 }
 
@@ -215,8 +200,7 @@ void jvm_init(c8 *p_classpath, StaticLibRegFunc regFunc) {
     thread_list = arraylist_create(0);
     //创建垃圾收集器
     garbage_collector_create();
-    //启动垃圾回收
-    garbage_thread_resume();
+
 
     memset(&jvm_runtime_cache, 0, sizeof(OptimizeCache));
 
@@ -241,12 +225,13 @@ void jvm_init(c8 *p_classpath, StaticLibRegFunc regFunc) {
 
     //init load thread, string etc
     Runtime *runtime = runtime_create(NULL);
-    Utf8String *clsName = utf8_create_c("java/lang/Integer");
+    Utf8String *clsName = utf8_create_c(STR_CLASS_JAVA_LANG_INTEGER);
     classes_load_get(clsName, runtime);
-    thread_boundle(runtime);
+    utf8_clear(clsName);
+    utf8_append_c(clsName, STR_CLASS_JAVA_LANG_THREAD);
+    classes_load_get(clsName, runtime);
     //开始装载类
     utf8_destory(clsName);
-    thread_unboundle(runtime);
     runtime_destory(runtime);
     runtime = NULL;
 }
@@ -288,27 +273,24 @@ s32 execute_jvm(c8 *p_classpath, c8 *p_mainclass, ArrayList *java_para) {
 
     c8 *p_methodname = "main";
     c8 *p_methodtype = "([Ljava/lang/String;)V";
-    s32 ret = call_method_main(p_mainclass, p_methodname, p_methodtype, java_para);
+    s32 ret = call_method_para(p_mainclass, p_methodname, p_methodtype, java_para, NULL);
 
     jvm_destroy(NULL);
     return ret;
 }
 
-/**
- *  load classes and execute main class
- * @param p_classpath speicfy classpath split with ';' or ':' ,item is jar file or directory
- * @param p_mainclass class that contain public void main(String[] args) method
- * @param java_para main class args count
- * @param java_para main class args value
- * @return errcode
- */
-s32 call_method_main(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, ArrayList *java_para) {
+
+s32 call_method_para(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, ArrayList *java_para, Runtime *p_runtime) {
     if (!p_mainclass) {
         jvm_printf("No main class .\n");
         return 1;
     }
     //创建运行时栈
-    Runtime *runtime = runtime_create(NULL);
+    Runtime *runtime = p_runtime;
+    if (!p_runtime) {
+        runtime = runtime_create(NULL);
+        thread_boundle(runtime);
+    }
 
     //开始装载类
 
@@ -327,33 +309,32 @@ s32 call_method_main(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, ArrayL
         MethodInfo *m = find_methodInfo_by_name(str_mainClsName, methodName, methodType,
                                                 runtime);
         if (m) {
-            thread_boundle(runtime);
 
             //准备参数
-
-            s32 count = java_para->length;
-            Utf8String *ustr = utf8_create_c(STR_CLASS_JAVA_LANG_STRING);
-            Instance *arr = jarray_create_by_type_name(runtime, count, ustr);
-            instance_hold_to_thread(arr, runtime);
-            utf8_destory(ustr);
-            int i;
-            for (i = 0; i < count; i++) {
-                Utf8String *utfs = utf8_create_c(arraylist_get_value(java_para, i));
-                Instance *jstr = jstring_create(utfs, runtime);
-                jarray_set_field(arr, i, (intptr_t) jstr);
-                utf8_destory(utfs);
+            if (java_para && java_para->length) {
+                s32 count = java_para->length;
+                Utf8String *ustr = utf8_create_c(STR_CLASS_JAVA_LANG_STRING);
+                Instance *arr = jarray_create_by_type_name(runtime, count, ustr);
+                instance_hold_to_thread(arr, runtime);
+                utf8_destory(ustr);
+                int i;
+                for (i = 0; i < count; i++) {
+                    Utf8String *utfs = utf8_create_c(arraylist_get_value(java_para, i));
+                    Instance *jstr = jstring_create(utfs, runtime);
+                    jarray_set_field(arr, i, (intptr_t) jstr);
+                    utf8_destory(utfs);
+                }
+                push_ref(runtime->stack, arr);
+                instance_release_from_thread(arr, runtime);
             }
-            push_ref(runtime->stack, arr);
-            instance_release_from_thread(arr, runtime);
-
 
             s64 start = currentTimeMillis();
 #if _JVM_DEBUG_BYTECODE_DETAIL > 0
             jvm_printf("\n[INFO]main thread start\n");
 #endif
             //调用主方法
-            if (JDWP_DEBUG) {
-                jthread_suspend(runtime);
+            if (jdwp_enable) {
+                if (jdwp_suspend_on_start)jthread_suspend(runtime);
                 jvm_printf("[JDWP]waiting for jdwp(port:%d) debug client connected...\n", JDWP_TCP_PORT);
             }//jdwp 会启动调试器
             runtime->method = NULL;
@@ -370,88 +351,25 @@ s32 call_method_main(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, ArrayL
             profile_print();
 #endif
 
-            thread_unboundle(runtime);
-
-        }
-        utf8_destory(methodName);
-        utf8_destory(methodType);
-    }
-    runtime_destory(runtime);
-
-
-    utf8_destory(str_mainClsName);
-    //
-
-    return collector->exit_code;
-}
-
-/**
- *
- * @param p_mainclass
- * @param p_methodname
- * @param p_methodtype
- * @param p_runtime
- * @return
- */
-s32 call_method_c(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, Runtime *p_runtime) {
-    if (!p_mainclass) {
-        jvm_printf("No main class .\n");
-        return 1;
-    }
-
-    //创建运行时栈
-    Runtime *runtime = p_runtime;
-    if (!p_runtime) {
-        runtime = runtime_create(NULL);
-    }
-
-    //开始装载类
-
-    Utf8String *str_mainClsName = utf8_create_c(p_mainclass);
-
-    //装入主类
-    JClass *clazz = classes_load_get(str_mainClsName, runtime);
-
-    s32 ret = 0;
-    if (clazz) {
-        Utf8String *methodName = utf8_create_c(p_methodname);
-        Utf8String *methodType = utf8_create_c(p_methodtype);
-
-        MethodInfo *m = find_methodInfo_by_name(str_mainClsName, methodName, methodType,
-                                                runtime);
-        if (m) {
-            //准备参数
-
-            s64 start = currentTimeMillis();
-            //调用方法
-
-            runtime->method = NULL;
-            runtime->clazz = clazz;
-            ret = execute_method(m, runtime);
-            if (ret != RUNTIME_STATUS_NORMAL) {
-                print_exception(runtime);
-            }
-
-
-            jvm_printf("execute cost %lld\n", (currentTimeMillis() - start));
-
-#if _JVM_DEBUG_PROFILE
-            profile_print();
-#endif
-
 
         }
         utf8_destory(methodName);
         utf8_destory(methodType);
     }
     if (!p_runtime) {
+        thread_unboundle(runtime);
         runtime_destory(runtime);
     }
+
 
     utf8_destory(str_mainClsName);
     //
 
     return ret;
+}
+
+s32 call_method(c8 *p_mainclass, c8 *p_methodname, c8 *p_methodtype, Runtime *p_runtime) {
+    return call_method_para(p_mainclass, p_methodname, p_methodtype, NULL, p_runtime);
 }
 
 s32 execute_method(MethodInfo *method, Runtime *runtime) {

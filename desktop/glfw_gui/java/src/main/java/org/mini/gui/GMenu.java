@@ -5,41 +5,29 @@
  */
 package org.mini.gui;
 
-import java.util.Iterator;
-import static org.mini.gui.GToolkit.nvgRGBA;
 import org.mini.nanovg.Nanovg;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_MIDDLE;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgFontFace;
-import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgLinearGradient;
-import static org.mini.nanovg.Nanovg.nvgRect;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgStroke;
-import static org.mini.nanovg.Nanovg.nvgStrokeColor;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
-import static org.mini.nanovg.Nanovg.nvgTextMetrics;
+
+import java.util.Iterator;
+
+import static org.mini.gui.GToolkit.nvgRGBA;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author Gust
  */
 public class GMenu extends GPanel {
 
-    float[] lineh = new float[1];
-    int selectedIndex = -1;
+    protected float[] lineh = new float[1];
+    protected int selectedIndex = -1;
     /**
      * contextMenu :
-     * change focus when this menu touched , the value true would not change current focus, false would chang 
+     * change focus when this menu touched , the value true would not change current focus, false would chang
      * like the edit menu "copy" "paste" can not change the current ui focus
      */
-    boolean contextMenu = false;
+    protected boolean contextMenu = false;
 
     public GMenu() {
-
+        this(0f, 0f, 1f, 1f);
     }
 
     public GMenu(int left, int top, int width, int height) {
@@ -51,9 +39,6 @@ public class GMenu extends GPanel {
         setSize(width, height);
     }
 
-    public int getType() {
-        return TYPE_MENU;
-    }
 
     @Override
     public void setLocation(float x, float y) {
@@ -61,20 +46,26 @@ public class GMenu extends GPanel {
         reAlign();
     }
 
+    @Override
+    public void setSize(float w, float h) {
+        super.setSize(w, h);
+        reAlign();
+    }
+
     public GMenuItem addItem(int index, String itemTag, GImage img) {
         GMenuItem item = new GMenuItem(itemTag, img, GMenu.this);
-        add(index, item);
+        addImpl(index, item);
         return item;
     }
 
     public GMenuItem addItem(String itemTag, GImage img) {
         GMenuItem item = new GMenuItem(itemTag, img, GMenu.this);
-        add(item);
+        addImpl(item);
         return item;
     }
 
     public void removeItem(int index) {
-        remove(index);
+        removeImpl(index);
     }
 
     @Override
@@ -95,7 +86,7 @@ public class GMenu extends GPanel {
             float item_w = getW() / size;
             float item_h = getH();
             int i = 0;
-            for (Iterator it = elements.iterator(); it.hasNext();) {
+            for (Iterator it = elements.iterator(); it.hasNext(); ) {
                 GMenuItem item = (GMenuItem) it.next();
                 item.setLocation(i * item_w, 0);
                 item.setSize(item_w, item_h);
@@ -105,11 +96,10 @@ public class GMenu extends GPanel {
     }
 
     /**
-     *
      * @param vg
      * @return
      */
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();
@@ -144,10 +134,9 @@ public class GMenu extends GPanel {
 
         nvgTextMetrics(vg, null, null, lineh);
 
-        int i = 0;
-        for (Iterator it = elements.iterator(); it.hasNext();) {
+        for (int i = 0, imax = elements.size(); i < imax; i++) {
             //畫竖线
-            GMenuItem item = (GMenuItem) it.next();
+            GMenuItem item = (GMenuItem) elements.get(i);
             float dx = item.getX();
             float dy = item.getY();
             if (i > 0) {
@@ -156,10 +145,9 @@ public class GMenu extends GPanel {
                 nvgRect(vg, dx - 1, dy + 2, 2, h - 4);
                 nvgFill(vg);
             }
-            i++;
         }
 
-        super.update(vg);
+        super.paint(vg);
         return true;
     }
 

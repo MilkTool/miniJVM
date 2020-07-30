@@ -5,33 +5,32 @@
  */
 package org.mini.gui;
 
-import java.util.TimerTask;
 import org.mini.glfm.Glfm;
 import org.mini.glfw.Glfw;
-import org.mini.gui.event.GActionListener;
 import org.mini.gui.event.GFocusChangeListener;
 import org.mini.gui.event.GStateChangeListener;
+
 import static org.mini.nanovg.Gutil.toUtf8;
 
 /**
- *
  * @author Gust
  */
 public abstract class GTextObject extends GObject implements GFocusChangeListener {
+    static GObject defaultUnionObj = new GObject() {
+    };
 
-    String hint;
-    byte[] hint_arr;
-    StringBuilder textsb = new StringBuilder();
-    byte[] text_arr;
-    boolean editable = true;
+    protected String hint;
+    protected byte[] hint_arr;
+    protected StringBuilder textsb = new StringBuilder();
+    protected byte[] text_arr;
+    protected boolean editable = true;
 
-    GStateChangeListener stateChangeListener;
+    protected GStateChangeListener stateChangeListener;
 
-    private static EditMenu editMenu;
 
-    boolean selectMode = false;
+    protected boolean selectMode = false;
 
-    GObject unionObj;//if this object exists, the keyboard not disappear
+    protected GObject unionObj = defaultUnionObj;//if this object exists, the keyboard not disappear
 
     public void setHint(String hint) {
         this.hint = hint;
@@ -130,14 +129,14 @@ public abstract class GTextObject extends GObject implements GFocusChangeListene
         if (newgo != unionObj && newgo != this) {
             GForm.hideKeyboard();
         }
-        disposeEditMenu();
+        GToolkit.disposeEditMenu();
         touched = false;
     }
 
     boolean touched;
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         if (isInArea(x, y)) {
             switch (phase) {
                 case Glfm.GLFMTouchPhaseBegan: {
@@ -155,31 +154,30 @@ public abstract class GTextObject extends GObject implements GFocusChangeListene
                 }
             }
         }
-        super.touchEvent(phase, x, y);
+        super.touchEvent(touchid, phase, x, y);
     }
 
     @Override
     public void longTouchedEvent(int x, int y) {
-        callEditMenu(this, x, y);
+        GToolkit.callEditMenu(this, x, y);
         //System.out.println("long toucched");
         super.longTouchedEvent(x, y);
     }
 
     static public boolean isEditMenuShown() {
-        if (editMenu == null) {
+        if (GToolkit.getEditMenu() == null) {
             return false;
         }
-        return editMenu.getParent() != null;
-    }
-
-    static public GMenu getEditMenu() {
-        return editMenu;
+        return GToolkit.getEditMenu().getParent() != null;
     }
 
     /**
      * @return the unionObj
      */
     public GObject getUnionObj() {
+        if (unionObj == defaultUnionObj) {
+            return null;
+        }
         return unionObj;
     }
 
@@ -187,7 +185,11 @@ public abstract class GTextObject extends GObject implements GFocusChangeListene
      * @param unionObj the unionObj to set
      */
     public void setUnionObj(GObject unionObj) {
-        this.unionObj = unionObj;
+        if (unionObj == null) {
+            this.unionObj = defaultUnionObj;
+        } else {
+            this.unionObj = unionObj;
+        }
     }
 
     /**
@@ -224,126 +226,4 @@ public abstract class GTextObject extends GObject implements GFocusChangeListene
         }
     }
 
-    public class EditMenu extends GMenu {
-
-        boolean shown = false;
-        GTextObject text;
-
-        public EditMenu(int left, int top, int width, int height) {
-            super(left, top, width, height);
-        }
-
-        @Override
-        public boolean update(long vg) {
-            if (text != null && text.getParent().getForm() == null) {
-                disposeEditMenu();
-            }
-            return super.update(vg);
-        }
-    }
-
-    /**
-     * 唤出基于form层的编辑菜单,选中菜单项后消失,失去焦点后消失
-     *
-     * @param focus
-     * @param x
-     * @param y
-     */
-    synchronized void callEditMenu(GTextObject focus, float x, float y) {
-        float menuH = 40, menuW = 300;
-
-        float mx = x - menuW / 2;
-        if (mx < 10) {
-            mx = 10;
-        } else if (mx + menuW > focus.getForm().getDeviceWidth()) {
-            mx = focus.getForm().getDeviceWidth() - menuW;
-        }
-        mx -= getForm().getX();
-        float my = y - 20 - menuH;
-        if (my < 20) {
-            my = y + 10;
-        } else if (my + menuH > focus.getForm().getDeviceHeight()) {
-            my = focus.getForm().getDeviceHeight() - menuH;
-        }
-        my -= getForm().getY();
-
-        if (editMenu == null) {
-            editMenu = new EditMenu((int) mx, (int) my, (int) menuW, (int) menuH);
-            editMenu.setFront(true);
-            GMenuItem item;
-
-            item = editMenu.addItem(GLanguage.getString("Select"), null);
-            item.setActionListener(new GActionListener() {
-                @Override
-                public void action(GObject gobj) {
-                    editMenu.text.doSelectText();
-                }
-            });
-            item = editMenu.addItem(GLanguage.getString("Copy"), null);
-            item.setActionListener(new GActionListener() {
-                @Override
-                public void action(GObject gobj) {
-                    editMenu.text.doCopyClipBoard();
-                    disposeEditMenu();
-                }
-            });
-            item = editMenu.addItem(GLanguage.getString("Paste"), null);
-            item.setActionListener(new GActionListener() {
-                @Override
-                public void action(GObject gobj) {
-                    if (editable) {
-                        editMenu.text.doPasteClipBoard();
-                    }
-                    disposeEditMenu();
-                }
-            });
-            item = editMenu.addItem(GLanguage.getString("Cut"), null);
-            item.setActionListener(new GActionListener() {
-                @Override
-                public void action(GObject gobj) {
-                    if (editable) {
-                        editMenu.text.doCut();
-                    }
-                    disposeEditMenu();
-                }
-            });
-            item = editMenu.addItem(GLanguage.getString("SeleAll"), null);
-            item.setActionListener(new GActionListener() {
-                @Override
-                public void action(GObject gobj) {
-                    editMenu.text.doSelectAll();
-                }
-            });
-
-            editMenu.setFixed(true);
-            editMenu.setContextMenu(true);
-        }
-        editMenu.text = focus;
-        editMenu.setLocation(mx, my);
-        //editMenu.move(mx - editMenu.getX(), my - editMenu.getY());
-
-        getForm().add(editMenu);
-        //System.out.println("edit menu show");
-    }
-
-    synchronized void disposeEditMenu() {
-        GForm.timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                GForm gf = getForm();
-                if (gf != null && editMenu != null) {
-                    gf.remove(editMenu);
-//                    if (editMenu.text == null) {
-//                    } else {
-//                        if (editMenu.text.unionObj != editMenu.text.parent.getFocus()) {
-//                            gf.remove(editMenu);
-//                        }
-//                    }
-                    resetSelect();
-                    selectMode = false;
-                }
-            }
-        }, 0);
-        //System.out.println("edit menu dispose");
-    }
 }

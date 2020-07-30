@@ -5,19 +5,15 @@
  */
 package org.mini.gui;
 
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_LEFT;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_MIDDLE;
 import static org.mini.nanovg.Nanovg.nvgFontFace;
 import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
 
 /**
- *
  * @author gust
  */
 public class GCanvas extends GPanel {
 
-    GGraphics g;
+    protected GGraphics g;
 
     public GCanvas() {
 
@@ -32,22 +28,31 @@ public class GCanvas extends GPanel {
         setSize(w, h);
     }
 
-    public int getType() {
-        return TYPE_CANVAS;
-    }
 
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         if (g == null) {
             g = new GGraphics(this, vg);
         }
+        super.paint(vg);
         nvgFontSize(vg, g.getFontSize());
         nvgFontFace(vg, GToolkit.getFontWord());
         paint(g);
-        super.update(vg);
         return true;
     }
 
     public void paint(GGraphics g) {
 
+    }
+
+    public int getWidth() {
+        return (int) getW();
+    }
+
+    public int getHeight() {
+        return (int) getH();
+    }
+
+    public GGraphics getGraphics(){
+        return g;
     }
 }

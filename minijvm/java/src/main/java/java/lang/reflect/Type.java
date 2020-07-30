@@ -10,4 +10,11 @@
 
 package java.lang.reflect;
 
-public interface Type { }
+public interface Type {
+    /**
+     * @since 1.8
+     */
+    default String getTypeName() {
+        return toString();
+    }
+}

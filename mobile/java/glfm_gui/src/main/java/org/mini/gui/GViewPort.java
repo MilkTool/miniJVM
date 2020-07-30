@@ -7,7 +7,6 @@ package org.mini.gui;
 
 import org.mini.glfm.Glfm;
 
-import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -17,23 +16,19 @@ import java.util.TimerTask;
 public class GViewPort extends GContainer {
 
     protected float[] viewBoundle = new float[4];//可视窗口边界, 
-    float minX, maxX, minY, maxY;
-    float scrollx;
-    float scrolly;
+    protected float minX, maxX, minY, maxY;
+    protected float scrollx;
+    protected float scrolly;
 
-    @Override
-    public int getType() {
-        return TYPE_VIEWPORT;
-    }
 
     @Override
     public void setLocation(float x, float y) {
         viewBoundle[LEFT] = x;
         viewBoundle[TOP] = y;
         if (parent != null) {
-            parent.reBoundle();
+            parent.reSize();
         }
-        setInnerLocation(x, y);
+//        setInnerLocation(x, y);
     }
 
     @Override
@@ -41,10 +36,10 @@ public class GViewPort extends GContainer {
         viewBoundle[WIDTH] = w;
         viewBoundle[HEIGHT] = h;
         if (parent != null) {
-            parent.reBoundle();
+            parent.reSize();
         }
-        setInnerSize(w, h);
-        reBoundle();
+//        setInnerSize(w, h);
+        reSize();
     }
 
     @Override
@@ -78,6 +73,14 @@ public class GViewPort extends GContainer {
         return viewBoundle;
     }
 
+    public float getLocationLeft() {
+        return viewBoundle[LEFT];
+    }
+
+    public float getLocationTop() {
+        return viewBoundle[TOP];
+    }
+
     @Override
     public float getInnerX() {
         return super.getX();
@@ -101,6 +104,8 @@ public class GViewPort extends GContainer {
     @Override
     public void setInnerLocation(float x, float y) {
         super.setLocation(x, y);
+        setScrollX(-x / getOutOfViewWidth());
+        setScrollY(-y / getOutOfViewHeight());
     }
 
     @Override
@@ -120,22 +125,24 @@ public class GViewPort extends GContainer {
         viewBoundle[LEFT] += dx;
         viewBoundle[TOP] += dy;
         if (parent != null) {
-            parent.reBoundle();
+            parent.reSize();
         }
     }
 
     @Override
     public void onAdd(GObject obj) {
-        reBoundle();
+        super.onAdd(obj);
+        reSize();
     }
 
     @Override
     public void onRemove(GObject obj) {
-        reBoundle();
+        super.onRemove(obj);
+        reSize();
     }
 
     @Override
-    public void reBoundle() {
+    public void reSize() {
         float posY = scrolly * (maxY - minY);
         float posX = scrollx * (maxX - minX);
 
@@ -143,30 +150,35 @@ public class GViewPort extends GContainer {
         minY = 0;
         maxX = minX + viewBoundle[WIDTH];
         maxY = minY + viewBoundle[HEIGHT];
-        for (GObject nko : elements) {
-            float[] bond = null;
-            if (nko instanceof GContainer) {
-                GContainer con = (GContainer) nko;
-                bond = con.getBoundle();
+        synchronized (elements) {
+            for (GObject nko : elements) {
+                float[] bond = null;
+                if (nko instanceof GContainer) {
+                    GContainer con = (GContainer) nko;
+                    bond = con.getBoundle();
 
-            } else {
-                bond = nko.getBoundle();
-            }
-            if (bond[LEFT] < minX) {
-                minX = bond[LEFT];
-            }
-            if (bond[LEFT] + bond[WIDTH] > maxX) {
-                maxX = bond[LEFT] + bond[WIDTH];
-            }
-            if (bond[TOP] < minY) {
-                minY = bond[TOP];
-            }
-            if (bond[TOP] + bond[HEIGHT] > maxY) {
-                maxY = bond[TOP] + bond[HEIGHT];
+                } else {
+                    bond = nko.getBoundle();
+                }
+                if (bond[LEFT] < minX) {
+                    minX = bond[LEFT];
+                }
+                if (bond[LEFT] + bond[WIDTH] > maxX) {
+                    maxX = bond[LEFT] + bond[WIDTH];
+                }
+                if (bond[TOP] < minY) {
+                    minY = bond[TOP];
+                }
+                if (bond[TOP] + bond[HEIGHT] > maxY) {
+                    maxY = bond[TOP] + bond[HEIGHT];
+                }
             }
         }
         this.boundle[WIDTH] = maxX - minX;
         this.boundle[HEIGHT] = maxY - minY;
+        if (this instanceof GViewSlot) {
+            int debug = 1;
+        }
         if (boundle[WIDTH] <= viewBoundle[WIDTH]) {
             boundle[LEFT] = viewBoundle[LEFT];
         }
@@ -183,7 +195,7 @@ public class GViewPort extends GContainer {
     byte dragDirection = DIR_NODEF;
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         switch (phase) {
             case Glfm.GLFMTouchPhaseBegan: {
                 if (task != null) {
@@ -199,7 +211,7 @@ public class GViewPort extends GContainer {
                 break;
             }
         }
-        super.touchEvent(phase, x, y);
+        super.touchEvent(touchid, phase, x, y);
     }
 
     //每多长时间进行一次惯性动作
@@ -207,7 +219,7 @@ public class GViewPort extends GContainer {
     //总共做多少次操作
     long maxMoveCount = 120;
     //初速度加成
-    float addOn = 1.2f;
+    float addOn = 1.5f;
     //惯性任务
     TimerTask task;
 
@@ -237,24 +249,29 @@ public class GViewPort extends GContainer {
 
                 @Override
                 public void run() {
-                    //System.out.println(this + " inertia Y " + speedY + " , " + resistance + " , " + count);
-                    speedY -= resistance;//速度和阻力抵消为0时,退出滑动
+                    try {
+                        //System.out.println(this + " inertia Y " + speedY + " , " + resistance + " , " + count);
+                        speedY -= resistance;//速度和阻力抵消为0时,退出滑动
 
-                    float tmpScrollY = scrolly;
-                    float inh = getInnerH();
-                    if (inh > 0) {
-                        float vec = (float) speedY / inh;
-                        moveY(vec);
-                        tmpScrollY -= vec;
-                        //System.out.println("dy:" + ((float) speedY / dh));
-                        //System.out.println("count:" + count + " speedY :" + speedY + " dh:" + inh + " res:" + resistance + " sy :" + scrolly + " vec:" + vec);
-                    }
-                    flush();
-                    if (count++ > maxMoveCount || tmpScrollY < 0 || tmpScrollY > 1) {
-                        try {
-                            this.cancel();
-                        } catch (Exception e) {
+                        float tmpScrollY = scrolly;
+                        float inh = getInnerH();
+                        if (inh > 0) {
+                            float vec = (float) speedY / inh;
+                            synchronized (elements) {
+                                movePercentY(vec);
+                            }
+                            tmpScrollY -= vec;
+                            //System.out.println("dy:" + ((float) speedY / dh));
                         }
+                        flush();
+                        if (count++ > maxMoveCount || tmpScrollY < 0 || tmpScrollY > 1) {
+                            try {
+                                this.cancel();
+                            } catch (Exception e) {
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
             };
@@ -272,23 +289,29 @@ public class GViewPort extends GContainer {
 
                 @Override
                 public void run() {
-                    //System.out.println(this + " inertia X " + speedX + " , " + resistance + " , " + count);
-                    speedX -= resistance;//速度和阴力抵消为0时,退出滑动
+                    try {
+                        //System.out.println(this + " inertia X " + speedX + " , " + resistance + " , " + count);
+                        speedX -= resistance;//速度和阴力抵消为0时,退出滑动
 
-                    float dw = getInnerW();
-                    float tmpScrollX = scrollx;
-                    if (dw > 0) {
-                        float vec = (float) speedX / dw;
-                        moveX(vec);
-                        tmpScrollX -= vec;
-                        //System.out.println("dx:" + ((float) speedX / dw));
-                    }
-                    flush();
-                    if (count++ > maxMoveCount || tmpScrollX < 0 || tmpScrollX > 1) {
-                        try {
-                            this.cancel();
-                        } catch (Exception e) {
+                        float inw = getInnerW();
+                        float tmpScrollX = scrollx;
+                        if (inw > 0) {
+                            float vec = (float) speedX / inw;
+                            synchronized (elements) {
+                                movePercentX(vec);
+                            }
+                            tmpScrollX -= vec;
+                            //System.out.println("dx:" + ((float) speedX / dw));
                         }
+                        flush();
+                        if (count++ > maxMoveCount || tmpScrollX < 0 || tmpScrollX > 1) {
+                            try {
+                                this.cancel();
+                            } catch (Exception e) {
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
             };
@@ -302,7 +325,8 @@ public class GViewPort extends GContainer {
 
     @Override
     public boolean scrollEvent(float dx, float dy, float x, float y) {
-        return dragEvent(dx, dy, x, y);
+        return super.scrollEvent(dx, dy, x, y);
+        //return dragEvent(dx, dy, x, y);
     }
 
     @Override
@@ -318,7 +342,7 @@ public class GViewPort extends GContainer {
         if (focus != null && focus.dragEvent(dx, dy, x, y)) {
             return true;
         }
-        reBoundle();
+        reSize();
         float dw = getOutOfViewWidth();
         float dh = getOutOfViewHeight();
         if (dw == 0 && dh == 0) {
@@ -334,15 +358,15 @@ public class GViewPort extends GContainer {
         float odx = (dw == 0) ? 0.f : (float) dx / dw;
         float ody = (dh == 0) ? 0.f : (float) dy / dh;
         if (dragDirection == DIR_X) {
-            return moveX(odx);
+            return movePercentX(odx);
         } else if (dragDirection == DIR_Y) {
-            return moveY(ody);
+            return movePercentY(ody);
         } else {
             return false;
         }
     }
 
-    boolean moveY(float dy) {
+    boolean movePercentY(float dy) {
         if (getOutOfViewHeight() <= 0) {
             return false;
         }
@@ -362,7 +386,7 @@ public class GViewPort extends GContainer {
         return false;
     }
 
-    boolean moveX(float dx) {
+    boolean movePercentX(float dx) {
         if (getOutOfViewWidth() <= 0) {
             return false;
         }
@@ -414,43 +438,4 @@ public class GViewPort extends GContainer {
         return boundle[WIDTH] - viewBoundle[WIDTH];
     }
 
-    @Override
-    public List<GObject> getElements() {
-        return super.getElements();
-    }
-
-    @Override
-    public int getElementSize() {
-        return elements.size();
-    }
-
-    @Override
-    public void add(GObject nko) {
-        super.add(nko);
-    }
-
-    @Override
-    public void add(int index, GObject nko) {
-        super.add(index, nko);
-    }
-
-    @Override
-    public void remove(GObject nko) {
-        super.remove(nko);
-    }
-
-    @Override
-    public void remove(int index) {
-        super.remove(index);
-    }
-
-    @Override
-    public boolean contains(GObject son) {
-        return super.contains(son);
-    }
-
-    @Override
-    public void clear() {
-        super.clear();
-    }
 }

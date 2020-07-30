@@ -6,28 +6,24 @@
 package org.mini.gui;
 
 import org.mini.glfm.Glfm;
-import static org.mini.gui.GObject.TYPE_LISTITEM;
-import static org.mini.nanovg.Nanovg.nvgImageSize;
+
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author Gust
  */
 public class GListItem extends GObject {
 
-    GImage img;
-    String label;
-    GList list;
+    protected GImage img;
+    protected GList list;
 
     public GListItem(GImage img, String lab) {
         this.img = img;
-        this.label = lab;
+        setText(lab);
+        setFontSize(GToolkit.getStyle().getTextFontSize());
+        setColor(GToolkit.getStyle().getTextFontColor());
     }
 
-    @Override
-    public int getType() {
-        return TYPE_LISTITEM;
-    }
 
     /**
      * @return the img
@@ -47,20 +43,20 @@ public class GListItem extends GObject {
      * @return the label
      */
     public String getLabel() {
-        return label;
+        return getText();
     }
 
     /**
      * @param label the label to set
      */
     public void setLabel(String label) {
-        this.label = label;
+        setText(label);
     }
 
     int mouseX, mouseY;
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         switch (phase) {
             case Glfm.GLFMTouchPhaseBegan:
                 mouseX = x;
@@ -89,7 +85,7 @@ public class GListItem extends GObject {
     }
 
     int getIndex() {
-        return parent.getElements().indexOf(this);
+        return parent.getElementsImpl().indexOf(this);
     }
 
     void select() {
@@ -97,12 +93,15 @@ public class GListItem extends GObject {
         list.select(index);
         list.pulldown = false;
         list.changeCurPanel();
+        if (list.stateChangeListener != null) {
+            list.stateChangeListener.onStateChange(list);
+        }
         flush();
         doAction();
     }
 
     @Override
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();
@@ -140,11 +139,10 @@ public class GListItem extends GObject {
                 ix = -(iw - thumb) * 0.5f;
                 iy = 0;
             }
-//            GList.drawImage(vg, tx, ty, thumb, thumb, img);
             GToolkit.drawImage(vg, img, tx, ty, thumb, thumb, !outOfFilter, outOfFilter ? 0.5f : 0.8f);
         }
-        float[] c = outOfFilter ? GToolkit.getStyle().getHintFontColor() : GToolkit.getStyle().getTextFontColor();
-        GList.drawText(vg, tx + thumb + pad, ty + thumb / 2, thumb, thumb, label, c);
+        float[] c = outOfFilter ? GToolkit.getStyle().getHintFontColor() : list.color;
+        GToolkit.drawTextLine(vg, tx + thumb + pad, ty + thumb / 2, w - (thumb + pad), thumb, getText(), list.fontSize, c, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         return true;
     }
 

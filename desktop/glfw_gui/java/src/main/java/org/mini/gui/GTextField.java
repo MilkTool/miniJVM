@@ -7,26 +7,13 @@ package org.mini.gui;
 
 import org.mini.glfm.Glfm;
 import org.mini.glfw.Glfw;
-import static org.mini.gui.GObject.HEIGHT;
-import static org.mini.gui.GObject.isInBoundle;
+import org.mini.nanovg.Nanovg;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
 import static org.mini.nanovg.Gutil.toUtf8;
-import org.mini.nanovg.Nanovg;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_CENTER;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_LEFT;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_MIDDLE;
-import static org.mini.nanovg.Nanovg.nvgCreateNVGglyphPosition;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFontFace;
-import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgNVGglyphPosition_x;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
-import static org.mini.nanovg.Nanovg.nvgTextGlyphPositionsJni;
-import static org.mini.nanovg.Nanovg.nvgTextJni;
-import static org.mini.nanovg.Nanovg.nvgTextMetrics;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GTextField extends GTextObject {
@@ -34,24 +21,24 @@ public class GTextField extends GTextObject {
     static public final int BOX_STYLE_EDIT = 0;
     static public final int BOX_STYLE_SEARCH = 1;
 
-    float[] reset_boundle;
-    int text_max = 256;
-    int boxStyle = BOX_STYLE_EDIT;
+    protected float[] reset_boundle;
+    protected int text_max = 256;
+    protected int boxStyle = BOX_STYLE_EDIT;
     //
-    byte[] search_arr = {(byte) 0xe2, (byte) 0x8c, (byte) 0xa8, 0};
-    byte[] reset_arr = toUtf8("" + ICON_CIRCLED_CROSS);
+    protected byte[] search_arr = {(byte) 0xe2, (byte) 0x8c, (byte) 0xa8, 0};
+    protected byte[] reset_arr = toUtf8("" + ICON_CIRCLED_CROSS);
     //
-    float[] lineh = {0};
-    short[] text_pos;
+    protected float[] lineh = {0};
+    protected short[] text_pos;
     //
-    int caretIndex;
-    int selectStart = -1;//选取开始
-    int selectEnd = -1;//选取结束
+    protected int caretIndex;
+    protected int selectStart = -1;//选取开始
+    protected int selectEnd = -1;//选取结束
 
-    boolean password = false;//是否密码字段
+    protected boolean password = false;//是否密码字段
 
     public GTextField() {
-
+        this("", "", 0f, 0f, 1f, 1f);
     }
 
     public GTextField(String text, String hint, int left, int top, int width, int height) {
@@ -67,9 +54,6 @@ public class GTextField extends GTextObject {
         setFocusListener(this);
     }
 
-    public int getType() {
-        return TYPE_TEXTFIELD;
-    }
 
     @Override
     void onSetText(String text) {
@@ -107,11 +91,11 @@ public class GTextField extends GTextObject {
                 } else if (isInBoundle(reset_boundle, rx, ry)) {
                     deleteAll();
                     resetSelect();
-                    disposeEditMenu();
+                    GToolkit.disposeEditMenu();
                 } else {
                     if (selectMode) {
                         resetSelect();
-                        disposeEditMenu();
+                        GToolkit.disposeEditMenu();
                     }
                     setCaretIndex(getCaretIndex(x, y));
                 }
@@ -119,7 +103,7 @@ public class GTextField extends GTextObject {
                 if (pressed) {
 
                 } else {
-                    callEditMenu(this, x, y);
+                    GToolkit.callEditMenu(this, x, y);
                 }
             }
         }
@@ -156,7 +140,7 @@ public class GTextField extends GTextObject {
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         int rx = (int) (x - parent.getInnerX());
         int ry = (int) (y - parent.getInnerY());
         if (isInBoundle(boundle, rx, ry)) {
@@ -164,17 +148,17 @@ public class GTextField extends GTextObject {
                 if (isInBoundle(reset_boundle, rx, ry)) {
                     deleteAll();
                     resetSelect();
-                    disposeEditMenu();
+                    if (GToolkit.getEditMenu() != null) GToolkit.getEditMenu().dispose();
                 } else {
                     if (selectMode) {
                         resetSelect();
-                        disposeEditMenu();
+                        if (GToolkit.getEditMenu() != null) GToolkit.getEditMenu().dispose();
                     }
                     setCaretIndex(getCaretIndex(x, y));
                 }
             }
         }
-        super.touchEvent(phase, x, y);
+        super.touchEvent(touchid, phase, x, y);
     }
 
     @Override
@@ -190,7 +174,6 @@ public class GTextField extends GTextObject {
     }
 
     /**
-     *
      * @param character
      */
     @Override
@@ -313,12 +296,11 @@ public class GTextField extends GTextObject {
     }
 
     /**
-     *
      * @param vg
      * @return
      */
     @Override
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();

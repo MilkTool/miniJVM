@@ -11,6 +11,7 @@
 #include "jvm.h"
 #include "jvm_util.h"
 #include "garbage.h"
+#include "jit.h"
 
 /* parse UTF-8 String */
 void *_parseCPString(JClass *_this, ByteBuf *buf, s32 index) {
@@ -304,8 +305,28 @@ void *_parseCPInvokeDynamic(JClass *_this, ByteBuf *buf, s32 index) {
 s32 _class_constant_pool_destory(JClass *clazz) {
     int i;
     for (i = 0; i < clazz->constant_item_count; i++) {
-        __refer ptr = clazz->constant_item_ptr[i];
-        jvm_free(ptr);
+        ConstantItem *cptr = clazz->constant_item_ptr[i];
+        if (cptr) {
+            switch (cptr->tag) {
+                case CONSTANT_UTF8: {
+                    ConstantUTF8 *ptr = (ConstantUTF8 *) cptr;
+                    if (ptr->utfstr) {
+                        utf8_destory(ptr->utfstr);
+                        ptr->utfstr = NULL;
+                    }
+                    break;
+                }
+                case CONSTANT_METHOD_REF: {
+                    ConstantMethodRef *ptr = (ConstantMethodRef *) cptr;
+                    if (ptr->virtual_methods) {
+                        pairlist_destory(ptr->virtual_methods);
+                        ptr->virtual_methods = NULL;
+                    }
+                    break;
+                }
+            }
+        }
+        jvm_free(cptr);
     }
 
     return 0;
@@ -551,18 +572,25 @@ s32 _class_method_info_destory(JClass *clazz) {
             CodeAttribute *ca = (CodeAttribute *) mi->converted_code;
             jvm_free(ca->code);//info已被转换为converted_attribute
             ca->code = NULL;
+            jvm_free(ca->bytecode_for_jit);//
+            ca->bytecode_for_jit = NULL;
             jvm_free(ca->exception_table);//info已被转换为converted_attribute
             ca->exception_table = NULL;
             jvm_free(ca->line_number_table);
             ca->line_number_table = NULL;
             if (ca->local_var_table)jvm_free(ca->local_var_table);
             ca->local_var_table = NULL;
+            jit_destory(&ca->jit);
             //
             jvm_free(mi->converted_code);
             mi->converted_code = NULL;
         }
         if (mi->attributes)jvm_free(mi->attributes);
         mi->attributes = NULL;
+        if (mi->jump_2_pos)jvm_free(mi->jump_2_pos);
+        mi->jump_2_pos = NULL;
+        if (mi->pos_2_label)jvm_free(mi->pos_2_label);
+        mi->pos_2_label = NULL;
         utf8_destory(mi->paraType);
         utf8_destory(mi->returnType);
         if (mi->breakpoint)jvm_free(mi->breakpoint);
@@ -695,13 +723,18 @@ s32 _parse_constant_pool(JClass *_this, ByteBuf *buf, s32 count) {
  * @param method
  */
 void _changeBytesOrder(MethodInfo *method) {
+
+    method->pos_2_label = pairlist_create(4);
+    method->jump_2_pos = pairlist_create(4);
     CodeAttribute *ca = method->converted_code;
-    u8 *opCode = ca->code;
-    u8 *end = ca->code_length + opCode;
+    spin_init(&ca->compile_lock, 0);
+
+    u8 *ip = ca->code;
+    u8 *end = ca->code_length + ip;
     //jvm_printf("adapte method %s.%s()\n", method->_this_class->name->data, method->name->data);
-    while (opCode < end) {
-        u8 cur_inst = *opCode;
-        s32 pc = opCode - ca->code;
+    while (ip < end) {
+        u8 cur_inst = *ip;
+        s32 code_idx = (s32) (ip - ca->code);
         if (cur_inst < op_breakpoint) {
 //            if (utf8_equals_c(method->name, "test_typecast"))
 //                jvm_printf("%8d, %s\n", pc, inst_name[cur_inst]);
@@ -725,48 +758,48 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_fconst_2:
             case op_dconst_0:
             case op_dconst_1: {
-                opCode++;
+                ip++;
                 break;
             }
             case op_bipush: {
-                opCode += 2;
+                ip += 2;
                 break;
             }
             case op_sipush: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
-                u8 *addr = opCode + 1;
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
                 break;
             }
 
 
             case op_ldc: {
 
-                opCode += 2;
+                ip += 2;
                 break;
             }
 
             case op_ldc_w: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
-                u8 *addr = opCode + 1;
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
                 break;
             }
 
             case op_ldc2_w: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
@@ -775,12 +808,12 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_iload:
             case op_fload:
             case op_aload: {
-                opCode += 2;
+                ip += 2;
                 break;
             }
             case op_lload:
             case op_dload: {
-                opCode += 2;
+                ip += 2;
                 break;
             }
 
@@ -812,7 +845,7 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_baload:
             case op_caload:
             case op_saload: {
-                opCode++;
+                ip++;
                 break;
             }
             case op_istore:
@@ -820,7 +853,7 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_astore:
             case op_lstore:
             case op_dstore: {
-                opCode += 2;
+                ip += 2;
                 break;
             }
 
@@ -897,12 +930,12 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_lor:
             case op_ixor:
             case op_lxor: {
-                opCode++;
+                ip++;
                 break;
             }
 
             case op_iinc: {
-                opCode += 3;
+                ip += 3;
                 break;
             }
 
@@ -926,7 +959,7 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_fcmpg:
             case op_dcmpl:
             case op_dcmpg: {
-                opCode++;
+                ip++;
                 break;
             }
 
@@ -948,44 +981,48 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_goto:
             case op_jsr: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
-                u8 *addr = opCode + 1;
-                *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
+                u8 *addr = ip + 1;
+                *((s16 *) addr) = s2c.s;
+                s32 jumpto = code_idx + s2c.s;
+                pairlist_putl(method->pos_2_label, jumpto, -1);// save label pos in list
+                pairlist_putl(method->pos_2_label, code_idx + 3, -1);// save label pos in list
+                ip += 3;
                 break;
             }
 
             case op_ret: {
-                opCode += 2;
+                ip += 2;
                 break;
             }
 
 
             case op_tableswitch: {
                 s32 pos = 0;
-                pos = 4 - ((((u64) (intptr_t) opCode) - (u64) (intptr_t) (ca->code)) % 4);//4 byte对齐
+                pos = 4 - ((((u64) (intptr_t) ip) - (u64) (intptr_t) (ca->code)) % 4);//4 byte对齐
 
-                u8 *addr = opCode + pos;
+                u8 *addr = ip + pos;
                 Int2Float i2c;
-                i2c.c3 = opCode[pos++];
-                i2c.c2 = opCode[pos++];
-                i2c.c1 = opCode[pos++];
-                i2c.c0 = opCode[pos++];
+                i2c.c3 = ip[pos++];
+                i2c.c2 = ip[pos++];
+                i2c.c1 = ip[pos++];
+                i2c.c0 = ip[pos++];
                 s32 default_offset = i2c.i;
+                pairlist_putl(method->pos_2_label, code_idx + i2c.i, -1);
                 *((s32 *) addr) = i2c.i;
                 addr += 4;
-                i2c.c3 = opCode[pos++];
-                i2c.c2 = opCode[pos++];
-                i2c.c1 = opCode[pos++];
-                i2c.c0 = opCode[pos++];
+                i2c.c3 = ip[pos++];
+                i2c.c2 = ip[pos++];
+                i2c.c1 = ip[pos++];
+                i2c.c0 = ip[pos++];
                 s32 low = i2c.i;
                 *((s32 *) addr) = i2c.i;
                 addr += 4;
-                i2c.c3 = opCode[pos++];
-                i2c.c2 = opCode[pos++];
-                i2c.c1 = opCode[pos++];
-                i2c.c0 = opCode[pos++];
+                i2c.c3 = ip[pos++];
+                i2c.c2 = ip[pos++];
+                i2c.c1 = ip[pos++];
+                i2c.c0 = ip[pos++];
                 s32 high = i2c.i;
                 *((s32 *) addr) = i2c.i;
                 addr += 4;
@@ -993,34 +1030,36 @@ void _changeBytesOrder(MethodInfo *method) {
                 s32 i = low;
                 for (; i <= high; i++) {
 
-                    i2c.c3 = opCode[pos++];
-                    i2c.c2 = opCode[pos++];
-                    i2c.c1 = opCode[pos++];
-                    i2c.c0 = opCode[pos++];
+                    i2c.c3 = ip[pos++];
+                    i2c.c2 = ip[pos++];
+                    i2c.c1 = ip[pos++];
+                    i2c.c0 = ip[pos++];
                     *((s32 *) addr) = i2c.i;
+                    pairlist_putl(method->pos_2_label, code_idx + i2c.i, -1);// save label pos in list
                     addr += 4;
                 }
-                opCode += pos;
+                ip += pos;
                 break;
             }
 
             case op_lookupswitch: {
                 s32 pos = 0;
-                pos = 4 - ((((u64) (intptr_t) opCode) - (u64) (intptr_t) (ca->code)) % 4);//4 byte对齐
+                pos = 4 - ((((u64) (intptr_t) ip) - (u64) (intptr_t) (ca->code)) % 4);//4 byte对齐
 
-                u8 *addr = opCode + pos;
+                u8 *addr = ip + pos;
 
                 Int2Float i2c;
-                i2c.c3 = opCode[pos++];
-                i2c.c2 = opCode[pos++];
-                i2c.c1 = opCode[pos++];
-                i2c.c0 = opCode[pos++];
+                i2c.c3 = ip[pos++];
+                i2c.c2 = ip[pos++];
+                i2c.c1 = ip[pos++];
+                i2c.c0 = ip[pos++];
                 s32 default_offset = i2c.i;
+                pairlist_putl(method->pos_2_label, code_idx + i2c.i, -1);
                 *((s32 *) addr) = i2c.i;
-                i2c.c3 = opCode[pos++];
-                i2c.c2 = opCode[pos++];
-                i2c.c1 = opCode[pos++];
-                i2c.c0 = opCode[pos++];
+                i2c.c3 = ip[pos++];
+                i2c.c2 = ip[pos++];
+                i2c.c1 = ip[pos++];
+                i2c.c0 = ip[pos++];
                 s32 n = i2c.i;
                 addr += 4;
                 *((s32 *) addr) = i2c.i;
@@ -1028,22 +1067,23 @@ void _changeBytesOrder(MethodInfo *method) {
 
                 int offset = default_offset;
                 for (i = 0; i < n; i++) {
-                    i2c.c3 = opCode[pos++];
-                    i2c.c2 = opCode[pos++];
-                    i2c.c1 = opCode[pos++];
-                    i2c.c0 = opCode[pos++];
+                    i2c.c3 = ip[pos++];
+                    i2c.c2 = ip[pos++];
+                    i2c.c1 = ip[pos++];
+                    i2c.c0 = ip[pos++];
                     key = i2c.i;
                     addr += 4;
                     *((s32 *) addr) = i2c.i;
-                    i2c.c3 = opCode[pos++];
-                    i2c.c2 = opCode[pos++];
-                    i2c.c1 = opCode[pos++];
-                    i2c.c0 = opCode[pos++];
+                    i2c.c3 = ip[pos++];
+                    i2c.c2 = ip[pos++];
+                    i2c.c1 = ip[pos++];
+                    i2c.c0 = ip[pos++];
                     offset = i2c.i;
+                    pairlist_putl(method->pos_2_label, code_idx + i2c.i, -1);// save label pos in list
                     addr += 4;
                     *((s32 *) addr) = i2c.i;
                 }
-                opCode += pos;
+                ip += pos;
                 break;
             }
 
@@ -1053,7 +1093,7 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_freturn:
             case op_areturn:
             case op_return: {
-                opCode++;
+                ip++;
                 break;
             }
 
@@ -1062,24 +1102,24 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_getfield:
             case op_putfield: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
                 break;
             }
 
             case op_invokevirtual: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
 
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
@@ -1087,12 +1127,12 @@ void _changeBytesOrder(MethodInfo *method) {
 
             case op_invokespecial: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
@@ -1100,87 +1140,87 @@ void _changeBytesOrder(MethodInfo *method) {
 
             case op_invokestatic: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
-                u8 *addr = opCode + 1;
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
                 break;
             }
 
 
             case op_invokeinterface: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
 
-                opCode += 5;
+                ip += 5;
                 break;
             }
 
             case op_invokedynamic: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 5;
+                ip += 5;
                 break;
             }
 
 
             case op_new: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
 
 
             case op_newarray: {
-                opCode += 2;
+                ip += 2;
                 break;
             }
 
             case op_anewarray: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
-                u8 *addr = opCode + 1;
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
 
             case op_arraylength: {
-                opCode++;
+                ip++;
                 break;
             }
 
 
             case op_athrow: {
-                opCode++;
+                ip++;
                 break;
             }
 
             case op_checkcast: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
@@ -1188,28 +1228,28 @@ void _changeBytesOrder(MethodInfo *method) {
 
             case op_instanceof: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
 
-                opCode += 3;
+                ip += 3;
 
                 break;
             }
 
             case op_monitorenter:
             case op_monitorexit: {
-                opCode++;
+                ip++;
 
                 break;
             }
 
             case op_wide: {
-                opCode++;
+                ip++;
 
-                cur_inst = *opCode;
+                cur_inst = *ip;
                 switch (cur_inst) {
                     case op_iload:
                     case op_fload:
@@ -1223,26 +1263,26 @@ void _changeBytesOrder(MethodInfo *method) {
                     case op_dstore:
                     case op_ret: {
                         Short2Char s2c;
-                        s2c.c1 = opCode[1];
-                        s2c.c0 = opCode[2];
-                        u8 *addr = opCode + 1;
+                        s2c.c1 = ip[1];
+                        s2c.c0 = ip[2];
+                        u8 *addr = ip + 1;
                         *((u16 *) addr) = s2c.us;
-                        opCode += 3;
+                        ip += 3;
                         break;
                     }
                     case op_iinc    : {
                         Short2Char s2c1, s2c2;
 
-                        s2c1.c1 = opCode[1];
-                        s2c1.c0 = opCode[2];
-                        s2c2.c1 = opCode[3];
-                        s2c2.c0 = opCode[4];
+                        s2c1.c1 = ip[1];
+                        s2c1.c0 = ip[2];
+                        s2c2.c1 = ip[3];
+                        s2c2.c0 = ip[4];
 
-                        u8 *addr = opCode + 1;
+                        u8 *addr = ip + 1;
                         *((u16 *) addr) = s2c1.us;
                         addr += 2;
                         *((u16 *) addr) = s2c2.us;
-                        opCode += 5;
+                        ip += 5;
                         break;
                     }
                     default:
@@ -1254,12 +1294,12 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_multianewarray: {
                 //data type index
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 4;
+                ip += 4;
                 break;
             }
 
@@ -1267,30 +1307,38 @@ void _changeBytesOrder(MethodInfo *method) {
             case op_ifnull:
             case op_ifnonnull: {
                 Short2Char s2c;
-                s2c.c1 = opCode[1];
-                s2c.c0 = opCode[2];
-                u8 *addr = opCode + 1;
+                s2c.c1 = ip[1];
+                s2c.c0 = ip[2];
+                u8 *addr = ip + 1;
                 *((u16 *) addr) = s2c.us;
-                opCode += 3;
+
+                s32 jumpto = code_idx + s2c.s;
+                pairlist_putl(method->pos_2_label, jumpto, -1);// save label pos in list
+
+                ip += 3;
                 break;
             }
 
             case op_breakpoint: {
-                opCode += 1;
+                ip += 1;
                 break;
             }
 
 
             case op_goto_w: {
                 Int2Float i2f;
-                i2f.c3 = opCode[1];
-                i2f.c2 = opCode[2];
-                i2f.c1 = opCode[3];
-                i2f.c0 = opCode[4];
+                i2f.c3 = ip[1];
+                i2f.c2 = ip[2];
+                i2f.c1 = ip[3];
+                i2f.c0 = ip[4];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((s32 *) addr) = i2f.i;
-                opCode += 5;
+
+                s32 jumpto = code_idx + i2f.i;
+                pairlist_putl(method->pos_2_label, jumpto, -1);// save label pos in list
+
+                ip += 5;
 
 
                 break;
@@ -1298,14 +1346,19 @@ void _changeBytesOrder(MethodInfo *method) {
 
             case op_jsr_w: {
                 Int2Float i2f;
-                i2f.c3 = opCode[1];
-                i2f.c2 = opCode[2];
-                i2f.c1 = opCode[3];
-                i2f.c0 = opCode[4];
+                i2f.c3 = ip[1];
+                i2f.c2 = ip[2];
+                i2f.c1 = ip[3];
+                i2f.c0 = ip[4];
 
-                u8 *addr = opCode + 1;
+                u8 *addr = ip + 1;
                 *((s32 *) addr) = i2f.i;
-                opCode += 5;
+
+                s32 jumpto = code_idx + i2f.i;
+                pairlist_putl(method->pos_2_label, jumpto, -1);// save label pos in list
+                pairlist_putl(method->pos_2_label, code_idx + 5, -1);// save label pos in list
+
+                ip += 5;
                 break;
             }
             default:
@@ -1313,6 +1366,27 @@ void _changeBytesOrder(MethodInfo *method) {
         }
     }
 
+    memcpy(ca->bytecode_for_jit, ca->code, ca->code_length);
+
+    u8 *mc = ca->code;
+    if (ca->code_length == 5) {//optimize setter eg: void setSize(int size){this.size=size;}
+        u8 mc4 = mc[4];
+        if (mc[1] == op_getfield
+            && mc[0] == op_aload_0
+            && (mc4 >= op_ireturn && mc4 <= op_areturn)) {
+            method->is_getter = 1;
+            //jvm_printf(" getter %s.%s  %d \n", utf8_cstr(method->_this_class->name), utf8_cstr(method->name), method->_this_class->status);
+        }
+    } else if (ca->code_length == 6) {//optimize setter eg: void setSize(int size){this.size=size;}
+        u8 mc1 = mc[1];
+        if (mc[5] == op_return
+            && mc[0] == op_aload_0
+            && mc[2] == op_putfield
+            && (mc1 == op_aload_1 || mc1 == op_dload_1 || mc1 == op_lload_1 || mc1 == op_iload_1 || mc1 == op_fload_1)) {
+            method->is_setter = 1;
+            //jvm_printf(" setter %s.%s  %d \n", utf8_cstr(method->_this_class->name), utf8_cstr(method->name), method->_this_class->status);
+        }
+    }
 }
 
 s32 _convert_to_code_attribute(CodeAttribute *ca, AttributeInfo *attr, JClass *clazz) {
@@ -1334,6 +1408,7 @@ s32 _convert_to_code_attribute(CodeAttribute *ca, AttributeInfo *attr, JClass *c
     i2c.c0 = attr->info[info_p++];
     ca->code_length = i2c.i;
     ca->code = (u8 *) jvm_calloc(sizeof(u8) * ca->code_length);
+    ca->bytecode_for_jit = (u8 *) jvm_calloc(sizeof(u8) * ca->code_length);
     memcpy(ca->code, attr->info + info_p, ca->code_length);
     info_p += ca->code_length;
     s2c.c1 = attr->info[info_p++];
@@ -1517,7 +1592,7 @@ void _class_optimize(JClass *clazz) {
     Utf8String *ustr = class_get_utf8_string(clazz,
                                              class_get_constant_classref(clazz, clazz->cff.this_class)->stringIndex);
     clazz->name = utf8_create_copy(ustr);
-//    if (utf8_equals_c(clazz->name, "javax/mini/eio/socket/PrivateOutputStream")) {
+//    if (utf8_equals_c(clazz->name, "com/meslewis/simplegltf2/simpleviewer/SimpleViewer$1")) {
 //        int debug = 1;
 //    }
     s32 i;
@@ -1554,6 +1629,11 @@ void _class_optimize(JClass *clazz) {
                 s2c.c1 = att->info[0];
                 s2c.c0 = att->info[1];
                 fi->const_value_item = class_get_constant_item(clazz, s2c.us);
+            } else if (utf8_equals_c(attName, "Signature")) {
+                Short2Char s2c;
+                s2c.c1 = att->info[0];
+                s2c.c0 = att->info[1];
+                fi->signature = class_get_utf8_string(clazz, s2c.us);
             }
         }
 
@@ -1588,7 +1668,8 @@ void _class_optimize(JClass *clazz) {
 
         //转attribute为CdoeAttribute
         for (j = 0; j < ptr->attributes_count; j++) {
-            if (utf8_equals_c(class_get_utf8_string(clazz, ptr->attributes[j].attribute_name_index), "Code") == 1) {
+            Utf8String *attname = class_get_utf8_string(clazz, ptr->attributes[j].attribute_name_index);
+            if (utf8_equals_c(attname, "Code") == 1) {
 //                if (utf8_equals_c(clazz->name, "espresso/syntaxtree/ExpressionNode") && utf8_equals_c(ptr->name, "evaluateExp")) {
 //                    int debug = 1;
 //                }
@@ -1599,6 +1680,12 @@ void _class_optimize(JClass *clazz) {
                 ptr->attributes[j].info = NULL;
                 ptr->converted_code = ca;
                 _changeBytesOrder(ptr);
+                jit_init(ca);
+            } else if (utf8_equals_c(attname, "Signature") == 1) {
+                Short2Char s2c;
+                s2c.c1 = ptr->attributes[j].info[0];
+                s2c.c0 = ptr->attributes[j].info[1];
+                ptr->signature = class_get_utf8_string(clazz, s2c.us);
             }
         }
     }
@@ -1609,10 +1696,15 @@ void _class_optimize(JClass *clazz) {
             Short2Char s2c;
             s2c.c1 = ptr->info[0];
             s2c.c0 = ptr->info[1];
-            clazz->source = class_get_utf8_string(clazz, s2c.s);
+            clazz->source = class_get_utf8_string(clazz, s2c.us);
         } else if (utf8_equals_c(name, "BootstrapMethods")) {
             _convert_2_bootstrap_methods(ptr, clazz);
 
+        } else if (utf8_equals_c(name, "Signature")) {
+            Short2Char s2c;
+            s2c.c1 = ptr->info[0];
+            s2c.c0 = ptr->info[1];
+            clazz->signature = class_get_utf8_string(clazz, s2c.us);
         }
     }
 
@@ -1790,7 +1882,7 @@ JClass *load_class(ClassLoader *loader, Utf8String *pClassName, Runtime *runtime
             tmpclazz = class_parse(bytebuf, runtime);
             bytebuf_destory(bytebuf);
         }
-
+        if (jdwp_enable && tmpclazz)event_on_class_prepare(runtime, tmpclazz);
     }
     if (!tmpclazz) {
         jvm_printf("class not found:  %s \n", utf8_cstr(clsName));

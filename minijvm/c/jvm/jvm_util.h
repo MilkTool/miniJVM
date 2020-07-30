@@ -116,6 +116,10 @@ static inline c8 *getInstanceFieldPtr(Instance *ins, FieldInfo *fi) {
     return &(ins->obj_fields[fi->offset_instance]);
 }
 
+static inline c8 *getInstanceFieldPtrByOffset(Instance *ins, u16 offset) {
+    return &(ins->obj_fields[offset]);
+}
+
 static inline c8 *getStaticFieldPtr(FieldInfo *fi) {
     return &(fi->_this_class->field_static[fi->offset]);
 }
@@ -264,10 +268,13 @@ struct _JavaThreadInfo {
     u8 is_interrupt;
 
 
-    spinlock_t lock;
+
     thrd_t pthread;
     //调试器相关字段
     JdwpStep jdwp_step;
+
+    ArrayList *stacktrack;  //save methodrawindex, the pos 0 is the throw point
+    ArrayList *lineNo;  //save methodrawindex, the pos 0 is the throw point
 };
 
 struct _ThreadLock {
@@ -280,7 +287,7 @@ s32 jthread_init(Instance *jthread, Runtime *runtime);
 
 s32 jthread_dispose(Instance *jthread);
 
-s32 jtherad_run(void *para);
+s32 jthread_run(void *para);
 
 thrd_t jthread_start(Instance *ins);
 
@@ -292,7 +299,7 @@ void jthread_set_stackframe_value(Instance *ins, void *val);
 
 __refer jthread_get_name_value(Instance *ins);
 
-void jthreadlock_create(MemoryBlock *mb);
+void jthreadlock_create(Runtime *runtime, MemoryBlock *mb);
 
 void jthreadlock_destory(MemoryBlock *mb);
 
@@ -381,6 +388,11 @@ static inline void runtime_destory_inl(Runtime *runtime) {
         runtime->runtime_pool_header = NULL;
         jvm_free(runtime);
     }
+}
+
+static inline void runtime_clear_stacktrack(Runtime *runtime) {
+    arraylist_clear(runtime->threadInfo->stacktrack);
+    arraylist_clear(runtime->threadInfo->lineNo);
 }
 
 ////======================= array =============================

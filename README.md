@@ -12,34 +12,44 @@
   * Minimal memory footprint .  
   * Minimal binary, embedded jvm.  
   * Minimal runtime classlib .   
-  * Support java5+ class file .  
+  * Support java5-8 class file .
   * Support embedded java source compiler(janino compiler) .  
-  * Java native method  .  
-  * Java garbage collection .   
+  * Jit supported .    
+  * Java garbage collection, Low latency .   
   * Java remote debug supported, JDWP Spec .  
   
 ## iOS/Android Platform Extended Features:  
-  * OpenGL ES 3.0 .  
-  * Swing like gui .  
+  * OpenGL ES 2.0 / 3.0 .  
+  * Swing like gui , XML gui layout, Auto layout on horizontal and vertical screen switch.    
   * Audio Playback and Capture .  
   * Take photo from Camera or Album .  
   * Save and Load file from mobile storage .   
-  * Api compatible with miniJVM desktop platform, can running on pc . 
+  * Api compatible with miniJVM desktop platform, can running on pc .  
 
-## mobile app IM Demo BiBiX , source at :https://github.com/digitalgust/BiBiX
-  <div align=center><img width="224" height="398" src="/screenshot/demo.gif"/></div>
-   This demo can be download from : http://bb.egls.cn:8080/down/BiBiX.jar , First install AppManager from :
-   /binary/ios/MiniPack.ipa or /binary/android/MiniPack.apk ,or run AppManager in mini_jvm (eg. /binary/win_64)
-   then download demo in AppManager and run the app. 
+## Demo
+
+  <div align=center><img width="224" height="398" src="/screenshot/demo.gif"/><img width="224" height="398" src="/screenshot/g3d.gif"/></div>
+
+  * Instant Message app  Demo , source at :https://github.com/digitalgust/BiBiX     
+  * BiBiX binary can be download from : http://bb.egls.cn:8080/down/BiBiX.jar     
+  * 3D game app Demo, source at :https://github.com/digitalgust/g3d     
+  * G3D binary can be download from : http://bb.egls.cn:8080/down/g3d.jar     
+  * Mobile platform : First install AppManager from iOS for binary/ios/MiniPack.ipa , Android for /binary/android/MiniPack.apk ,then download demo in AppManager and run the app.     
+  * Desktop computer: /binary/win_64  , /binary/macos , /binary/win32 , /binary/centos_x64   run test.sh 
+
 
 ## Architecture:  
 
   <div align=center><img width="540" height="350" src="https://raw.githubusercontent.com/digitalgust/miniJVM/master/screenshot/arch.png"/></div>
 
 
-## Changelog
-   2019.10.  Jit is developing     
+## Changelog:
+   2020.03.  Add xml layout for gui system, add 3D game demo for minijvm, fix jdwp debug for jetbrain idea.               
+   2019.12.  Bind cross platform awtk ui system , see [awtk-minijvm](https://github.com/digitalgust/miniJVM/tree/master/desktop/awtk_gui)   
+   2019.12.  Jit enabled, it based on sljit project   
+   2019.10.  Jit is developing   
    2018.12.  Optimize performance     
+   2017.09.  miniJVM start   
 
 
 ## How to develop iOS/Android app in java:   
@@ -52,9 +62,9 @@
    * Configure **/mobile/java/ExApp/src/main/config.txt** for icon ,version, boot class, etc .     
    * Build ExApp project , it would copy ExApp.jar to **/mobile/assets/resfiles/ExApp.jar**   
    * Install **/binary/ios/MiniPack.ipa** for iPhone device , (Enterprise distrbute version, need Verify app, Setting->General->Device Management->EGLS Technology ltd->Verify App), or **/binary/android/MiniPack.apk** for Android device , These two binary built from **/mobile/iosapp/**  and **/mobile/java/androidapp**, you can build it yourself.    
-   * Touch the app icon to open MiniPack app, you would see the ExApp is running (the left of picture).
-     You can touch "exit to AppManager" in ExApp, AppManager is a App maintaince tool (the middle and right of picture), It can start a in-app webserver for upload app, it can download app from a website also .  
-    <div align=center><img width="672" height="398"   src="https://raw.githubusercontent.com/digitalgust/miniJVM/master/screenshot/appmgr.png"/></div>
+   * Touch the app icon to open MiniPack app, you would see the ExApp is running (the left of picture).   
+     You can touch "exit to AppManager" in ExApp, AppManager is a App maintaince tool (the middle and right of picture), It can start a in-app webserver for upload app, it can download app from a website also .   
+    <div align=center><img width="672" height="398"   src="https://raw.githubusercontent.com/digitalgust/miniJVM/master/screenshot/appmgr.png"/></div>   
   
   
 ## How to Remote debug:  
@@ -92,18 +102,20 @@ String s=(String)list.get(0);//can't ignore (String) cast qualifier.
 
 
 ## Referenced project and technology:   
-   [Sun CLDC](http://www.oracle.com/technetwork/java/cldc-141990.html)  :reference    
+   [Sun CLDC](http://www.oracle.com/technetwork/java/cldc-141990.html)  :referenced cldc    
    [Miniz](https://github.com/richgel999/miniz) :for read jar files    
-   [GLFM](https://github.com/brackeen/glfm) :for cross platform (android/ios) GUI   
+   [Glfm](https://github.com/brackeen/glfm) :for cross platform (android/ios) GUI   
    [Nanovg](https://github.com/memononen/nanovg)  :for GUI paint function   
-   [Stb](https://github.com/nothings/stb) :for GUI truetype font and image  
+   [Stb](https://github.com/nothings/stb) :for GUI truetype font and image    
    [Glad](https://github.com/Dav1dde/glad)  :for replace openGL/GLES head file   
-   [GLFW](https://github.com/glfw/glfw)  :for pc cross platform GUI   
+   [Glfw](https://github.com/glfw/glfw)  :for pc cross platform GUI   
    [Dirent](https://github.com/tronkko/dirent)  :for linux style on win vc file and directory access    
    [Tinycthread](https://github.com/tinycthread/tinycthread)  :for cross platform thread   
    [JRegex](https://github.com/digitalgust/minijvm_third_lib/tree/master/jregex)  :for java String regex match     
    [Janino](http://janino-compiler.github.io/janino/)  :for compile java source file     
-   [MiniAudio](https://github.com/dr-soft/miniaudio)  :for java audio playback and capture     
+   [MiniAudio](https://github.com/dr-soft/miniaudio)  :for java audio playback and capture   
+   [Sljit](https://github.com/zherczeg/sljit)  :Platform independent low-level JIT compiler   
+   [Awtk-minijvm](https://github.com/zlgopen/awtk-minijvm)  :[AWTK](https://github.com/zlgopen/awtk) cross platform ui bind to minijvm   
 
 
 ## Development IDE using:  
@@ -122,15 +134,57 @@ String s=(String)list.get(0);//can't ignore (String) cast qualifier.
 ## Example of mobile application
 
 the example demonstrate how develop java app for iOS and Android 
+UI layout xml file MyForm.xml
+
+```
+<form name="FORM_MAIN" w="100%" h="100%">
+    <script>
+        sub change()
+            red=mod(random(),255)
+            green=mod(random(),255)
+            blue=mod(random(),255)
+            setColor("LAB_HELP",red,green,blue,255)
+            setText("LAB_HELP","Any a test")
+        ret
+    </script>
+
+    <frame name="FRAME_TEST" w="80%" h="400" align="top,hcenter" title="WINDOW">
+        <label name="LAB_HELP" w="100%">Help text:</label>
+        <input w="100%" h="300" multiline="1"><![CDATA[
+            This app is an example of mini_jvm, Threre are a menu and a frame .
+            Touch the 'Exit to AppManager' , you will enter the AppManager, AppManager manage all app, it can upload ,download , delete app.
+            1. DOWNLOAD : Put your jar in a website , then input the url of jar in AppManager, Touch 'Download' ,it would download the jar ,then update the app list.
+            2. UPLOAD : The first you touch the 'Start' to open the inapp webserver, then open browser in your Desktop Computer, open 'http://phone_ip_addr:8088' , and pickup a jar in the page, upload it. NOTE: That computer and the phone must be same LAN.
+            3. RUN : Touch the App name in the list, Touch 'Run' can start the app.
+            4. SET AS BOOT APP : The boot app will startup when MiniPack opend.
+            5. UPGRADE : AppManager will download the new jar ,url that get from config.txt in jar.
+            6. DELETE : The app would be deleteted.;
+            ]]>
+        </input>
+        <br/>
+        <button name="BT_SCRIPT" h="30" onclick="change()">{Change}</button>
+        <button name="BT_CANCEL" h="30">{Cancel}</button>
+        <br/>
+    </frame>
+
+    <menu name="MENU_MAIN" x="0" y="90%" w="100%" h="10%" fixed="1">
+        <mi name="MI_OPENFRAME" pic="/res/hello.png">{Test}</mi>
+        <mi name="MI_EXIT" pic="/res/appmgr.png">{Exit}</mi>
+    </menu>
+</form>
+```
+
+Java source file MyApp.java
 ```
 package test;
 
 import org.mini.apploader.AppManager;
 import org.mini.gui.*;
-import org.mini.gui.event.*;
+import org.mini.layout.UITemplate;
+import org.mini.layout.XContainer;
+import org.mini.layout.XEventHandler;
 
 /**
- *
  * @author gust
  */
 public class MyApp extends GApplication {
@@ -140,81 +194,64 @@ public class MyApp extends GApplication {
     GFrame gframe;
 
     @Override
-    public GForm getForm(GApplication appins) {
+    public GForm getForm() {
         if (form != null) {
             return form;
         }
+        //set the default language
         GLanguage.setCurLang(GLanguage.ID_CHN);
-        form = new GForm();
 
-        form.setFps(30f);
-        long vg = form.getNvContext();
+        //load xml
+        String xmlStr = GToolkit.readFileFromJarAsString("/res/MyForm.xml", "utf-8");
 
-        int menuH = 80;
-        GImage img = GImage.createImageFromJar("/res/hello.png");
-        menu = new GMenu(0, form.getDeviceHeight() - menuH, form.getDeviceWidth(), menuH);
-        menu.setFixed(true);
-        GMenuItem item = menu.addItem("Hello World", img);
-        item.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                if (gframe != null) {
-                    gframe.close();
+        UITemplate uit = new UITemplate(xmlStr);
+        UITemplate.getVarMap().put("Cancel", "CANCEL"); //replace keywork in xml
+        UITemplate.getVarMap().put("Change", "Change");
+        UITemplate.getVarMap().put("Test", "test");
+        UITemplate.getVarMap().put("Exit", "QUIT");
+        XContainer xc = (XContainer) XContainer.parseXml(uit.parse());
+        int screenW = GCallBack.getInstance().getDeviceWidth();
+        int screenH = GCallBack.getInstance().getDeviceHeight();
+
+        //build gui with event handler
+        xc.build(screenW, screenH, new XEventHandler() {
+            public void action(GObject gobj, String cmd) {
+                String name = gobj.getName();
+                switch (name) {
+                    case "MI_OPENFRAME":
+                        if (form.findByName("FRAME_TEST") == null) {
+                            form.add(gframe);
+                        }
+                        break;
+                    case "MI_EXIT":
+                        AppManager.getInstance().active();
+                        break;
+                    case "BT_CANCEL":
+                        gframe.close();
+                        break;
                 }
-                gframe = getFrame1();
-                form.add(gframe);
+            }
+
+            public void onStateChange(GObject gobj, String cmd) {
+            }
+        });
+        form = (GForm) xc.getGui();
+        gframe = (GFrame) form.findByName("FRAME_TEST");
+        if (gframe != null) gframe.align(GGraphics.HCENTER | GGraphics.VCENTER);
+        menu = (GMenu) form.findByName("MENU_MAIN");
+
+        //process Hori screen or Vert screen
+        //if screen size changed ,then ui will resized relative
+        form.setSizeChangeListener((width, height) -> {
+            if (gframe != null && gframe.getXmlAgent() != null) {
+                ((XContainer) form.getXmlAgent()).reSize(width, height);
                 gframe.align(GGraphics.HCENTER | GGraphics.VCENTER);
             }
         });
-
-        img = GImage.createImageFromJar("/res/appmgr.png");
-        item = menu.addItem("Exit to AppManager", img);
-        item.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                AppManager.getInstance().active();
-            }
-        });
-
-        form.add(menu);
         return form;
     }
-
-    public GFrame getFrame1() {
-
-        GFrame gframe = new GFrame("Hello World", 50, 50, form.getDeviceWidth() * .8f, (form.getDeviceHeight() - menu.getH()) * .7f);
-        GViewPort parent = gframe.getView();
-        float pad = 8;
-        float x = pad, y = 10;
-        float btnH = 28;
-
-        String conttxt = "  This app is an example of mini_jvm, Threre are a menu and a frame .\n"
-                + "  Touch the 'Exit to AppManager' , you will enter the AppManager, AppManager manage all app, it can upload ,download , delete app.\n"
-                + "  1. DOWNLOAD : Put your jar in a website , then input the url of jar in AppManager, Touch 'Download' ,it would download the jar ,then update the app list.\n"
-                + "  2. UPLOAD : The first you touch the 'Start' to open the inapp webserver, then open browser in your Desktop Computer, open 'http://phone_ip_addr:8088' , and pickup a jar in the page, upload it.  NOTE: That computer and the phone must be same LAN.\n"
-                + "  3. RUN : Touch the App name in the list, Touch 'Run' can start the app.\n "
-                + "  4. SET AS BOOT APP : The boot app will startup when MiniPack opend. \n"
-                + "  5. UPGRADE : AppManager will download the new jar ,url that get from config.txt in jar.\n"
-                + "  6. DELETE : The app would be deleteted.\n";
-        GTextBox cont = new GTextBox(conttxt, "Contents", x, y, parent.getW() - x * 2, parent.getH() - pad * 2 - btnH - y);
-        cont.setEditable(false);
-        parent.add(cont);
-        y += cont.getH() + pad;
-
-        GButton bt2 = new GButton("Cancel", x + 170, y, 110, btnH);
-        bt2.setBgColor(0, 0, 0, 0);
-        bt2.setActionListener(new GActionListener() {
-            @Override
-            public void action(GObject gobj) {
-                gobj.getForm().remove(gframe);
-            }
-        });
-        parent.add(bt2);
-
-        return gframe;
-    }
-
 }
+
 
 
 

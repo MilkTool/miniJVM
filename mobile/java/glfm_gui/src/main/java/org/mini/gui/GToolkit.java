@@ -5,41 +5,18 @@
  */
 package org.mini.gui;
 
-import java.io.InputStream;
-import java.util.Hashtable;
 import org.mini.gui.event.GActionListener;
 import org.mini.gui.event.GFocusChangeListener;
-import static org.mini.nanovg.Gutil.toUtf8;
-import org.mini.reflect.ReflectArray;
-import org.mini.reflect.vm.RefNative;
 import org.mini.nanovg.Nanovg;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_LEFT;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_TOP;
-import static org.mini.nanovg.Nanovg.NVG_HOLE;
-import static org.mini.nanovg.Nanovg.nvgAddFallbackFontId;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgBoxGradient;
-import static org.mini.nanovg.Nanovg.nvgCircle;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgFontFace;
-import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgImagePattern;
-import static org.mini.nanovg.Nanovg.nvgImageSize;
-import static org.mini.nanovg.Nanovg.nvgPathWinding;
-import static org.mini.nanovg.Nanovg.nvgRect;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgStroke;
-import static org.mini.nanovg.Nanovg.nvgStrokeColor;
-import static org.mini.nanovg.Nanovg.nvgStrokeWidth;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
-import static org.mini.nanovg.Nanovg.nvgTextBoundsJni;
-import static org.mini.nanovg.Nanovg.nvgTextBoxBoundsJni;
-import static org.mini.nanovg.Nanovg.nvgTextBoxJni;
+import org.mini.reflect.ReflectArray;
+
+import java.io.InputStream;
+import java.util.Hashtable;
+
+import static org.mini.nanovg.Gutil.toUtf8;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GToolkit {
@@ -59,14 +36,13 @@ public class GToolkit {
     }
 
     /**
-     *
      * 返回数组数据区首地址
      *
      * @param array
      * @return
      */
     public static long getArrayDataPtr(Object array) {
-        return ReflectArray.getBodyPtr(RefNative.obj2id(array));
+        return ReflectArray.getBodyPtr(array);
     }
 
     public static float[] nvgRGBA(int r, int g, int b, int a) {
@@ -79,16 +55,26 @@ public class GToolkit {
             int av = is.available();
             if (is != null && av >= 0) {
                 byte[] b = new byte[av];
-                int len = is.read(b);
-                if (len != av) {
-                    throw new RuntimeException("read file from jar error: " + path);
-                } else {
-                    //System.out.println("load from jar: " + path + " ,bytes:" + len);
+                int r, read = 0;
+                while (read < av) {
+                    r = is.read(b, read, av - read);
+                    read += r;
                 }
                 return b;
             } else {
                 System.out.println("load from jar fail : " + path);
             }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
+    public static String readFileFromJarAsString(String path, String encode) {
+        try {
+            byte[] cont = readFileFromJar(path);
+            String s = new String(cont, encode);
+            return s;
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -149,7 +135,7 @@ public class GToolkit {
 
     public static float[] getFontBoundle(long vg) {
         float[] bond = new float[4];
-        nvgTextBoundsJni(vg, 0, 0, FONT_GLYPH_TEMPLATE, 0, FONT_GLYPH_TEMPLATE.length, bond);
+        nvgTextBoundsJni(vg, 0f, 0f, FONT_GLYPH_TEMPLATE, 0, FONT_GLYPH_TEMPLATE.length, bond);
         bond[GObject.WIDTH] -= bond[GObject.LEFT];
         bond[GObject.HEIGHT] -= bond[GObject.TOP];
         bond[GObject.LEFT] = bond[GObject.TOP] = 0;
@@ -171,6 +157,7 @@ public class GToolkit {
     public static void setStyle(GStyle style) {
         defaultStyle = style;
     }
+
     /**
      * 光标
      */
@@ -255,11 +242,24 @@ public class GToolkit {
         float[] bond = new float[4];
         byte[] b = toUtf8(s);
         nvgTextBoxBoundsJni(vg, 0, 0, width, b, 0, b.length, bond);
-//        bond[GObject.WIDTH] -= bond[GObject.LEFT];
-//        bond[GObject.HEIGHT] -= bond[GObject.TOP];
-//        bond[GObject.LEFT] = bond[GObject.TOP] = 0;
+        bond[GObject.WIDTH] -= bond[GObject.LEFT];
+        bond[GObject.HEIGHT] -= bond[GObject.TOP];
+        bond[GObject.LEFT] = bond[GObject.TOP] = 0;
         return bond;
     }
+
+    public static void drawTextLine(long vg, float tx, float ty, float pw, float ph, String s, float fontSize, float[] color, int align) {
+        if (s == null) {
+            return;
+        }
+        nvgFontSize(vg, fontSize);
+        nvgFontFace(vg, GToolkit.getFontWord());
+        nvgTextAlign(vg, align);
+        nvgFillColor(vg, color);
+        byte[] b = toUtf8(s);
+        Nanovg.nvgTextJni(vg, tx, ty, b, 0, b.length);
+    }
+
 
     public static void drawText(long vg, float x, float y, float w, float h, String s) {
 
@@ -267,7 +267,9 @@ public class GToolkit {
     }
 
     public static void drawText(long vg, float x, float y, float w, float h, String s, float fontSize, float[] color) {
-
+        if (s == null) {
+            return;
+        }
         nvgFontSize(vg, fontSize);
         nvgFillColor(vg, color);
         nvgFontFace(vg, GToolkit.getFontWord());
@@ -277,15 +279,7 @@ public class GToolkit {
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
 
         if (text_arr != null) {
-//            float[] bond = new float[4];
-//            nvgTextBoxBoundsJni(vg, x, y, w, text_arr, 0, text_arr.length, bond);
-//            bond[WIDTH] -= bond[LEFT];
-//            bond[HEIGHT] -= bond[TOP];
-//            bond[LEFT] = bond[TOP] = 0;
-//
-//            if (bond[HEIGHT] > h) {
-//                y -= bond[HEIGHT] - h;
-//            }
+
             nvgTextBoxJni(vg, x, y, w, text_arr, 0, text_arr.length);
         }
     }
@@ -302,8 +296,10 @@ public class GToolkit {
         byte[] shadowPaint, imgPaint;
         float ix, iy, iw, ih;
         int[] imgW = {0}, imgH = {0};
+        imgW[0] = img.getWidth();
+        imgH[0] = img.getHeight();
 
-        nvgImageSize(vg, img.getTexture(vg), imgW, imgH);
+        //nvgImageSize(vg, img.getTexture(vg), imgW, imgH);
         if (imgW[0] < imgH[0]) {
             iw = pw;
             ih = iw * (float) imgH[0] / (float) imgW[0];
@@ -318,7 +314,7 @@ public class GToolkit {
 
         imgPaint = nvgImagePattern(vg, px + ix + 1, py + iy + 1, iw - 2, ih - 2, 0.0f / 180.0f * (float) Math.PI, img.getTexture(vg), alpha);
         nvgBeginPath(vg);
-        nvgRoundedRect(vg, px, py, pw, ph, 5);
+        nvgRoundedRect(vg, px, py, pw, ph, border ? 5f : 0f);
         nvgFillPaint(vg, imgPaint);
         nvgFill(vg);
 
@@ -332,7 +328,7 @@ public class GToolkit {
 //            nvgFill(vg);
 
             nvgBeginPath(vg);
-            nvgRoundedRect(vg, px + 1, py + 1, pw - 2, ph - 2, 4 - 0.5f);
+            nvgRoundedRect(vg, px + 1, py + 1, pw - 2, ph - 2, border ? 3.5f : 0f);
             nvgStrokeWidth(vg, 1.0f);
             nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 192));
             nvgStroke(vg);
@@ -394,10 +390,9 @@ public class GToolkit {
     }
 
     /**
-     * return a list frame
-     *
      * @param title
-     * @param items
+     * @param strs
+     * @param imgs
      * @param buttonListener
      * @param itemListener
      * @return
@@ -608,7 +603,7 @@ public class GToolkit {
             }
 
             @Override
-            public boolean update(long vg) {
+            public boolean paint(long vg) {
                 float w = getW();
                 float h = getH();
 
@@ -618,7 +613,7 @@ public class GToolkit {
             }
 
             @Override
-            public void touchEvent(int phase, int x, int y) {
+            public void touchEvent(int touchid, int phase, int x, int y) {
                 if (getForm() != null) {
                     if (getElements().isEmpty()) {//no menu
                         getForm().remove(this);
@@ -662,6 +657,137 @@ public class GToolkit {
         view.setLocation((formW - view.getW()) / 2, (formH - view.getH()) / 2);
 
         return view;
+    }
+
+
+    private static EditMenu editMenu;
+
+
+    static public EditMenu getEditMenu() {
+        return editMenu;
+    }
+
+    static public void disposeEditMenu() {
+        if (editMenu != null) editMenu.dispose();
+    }
+
+    static public class EditMenu extends GMenu {
+
+        boolean shown = false;
+        GTextObject text;
+
+        public EditMenu(int left, int top, int width, int height) {
+            super(left, top, width, height);
+        }
+
+        @Override
+        public boolean paint(long vg) {
+            if (text != null && text.getParent().getForm() == null) {
+                dispose();
+            }
+            return super.paint(vg);
+        }
+
+
+        synchronized void dispose() {
+            GForm gf = getForm();
+            if (gf != null) {
+                gf.remove(editMenu);
+                if (text != null) {
+                    text.resetSelect();
+                    text.selectMode = false;
+                }
+            }
+            //System.out.println("edit menu dispose");
+        }
+    }
+
+    /**
+     * 唤出基于form层的编辑菜单,选中菜单项后消失,失去焦点后消失
+     *
+     * @param focus
+     * @param x
+     * @param y
+     */
+    synchronized static public void callEditMenu(GTextObject focus, float x, float y) {
+        if (focus == null || focus.getForm() == null) {
+            return;
+        }
+
+        float menuH = 40, menuW = 300;
+
+        float mx = x - menuW / 2;
+        if (mx < 10) {
+            mx = 10;
+        } else if (mx + menuW > focus.getForm().getDeviceWidth()) {
+            mx = focus.getForm().getDeviceWidth() - menuW;
+        }
+        mx -= focus.getForm().getX();
+        float my = y - 20 - menuH;
+        if (my < 20) {
+            my = y + 10;
+        } else if (my + menuH > focus.getForm().getDeviceHeight()) {
+            my = focus.getForm().getDeviceHeight() - menuH;
+        }
+        my -= focus.getForm().getY();
+
+        if (editMenu == null) {
+            editMenu = new EditMenu((int) mx, (int) my, (int) menuW, (int) menuH);
+            editMenu.setFront(true);
+            GMenuItem item;
+
+            item = editMenu.addItem(GLanguage.getString("Select"), null);
+            item.setActionListener(new GActionListener() {
+                @Override
+                public void action(GObject gobj) {
+                    editMenu.text.doSelectText();
+                }
+            });
+            item = editMenu.addItem(GLanguage.getString("Copy"), null);
+            item.setActionListener(new GActionListener() {
+                @Override
+                public void action(GObject gobj) {
+                    editMenu.text.doCopyClipBoard();
+                    editMenu.dispose();
+                }
+            });
+            item = editMenu.addItem(GLanguage.getString("Paste"), null);
+            item.setActionListener(new GActionListener() {
+                @Override
+                public void action(GObject gobj) {
+                    if (editMenu.text.editable) {
+                        editMenu.text.doPasteClipBoard();
+                    }
+                    editMenu.dispose();
+                }
+            });
+            item = editMenu.addItem(GLanguage.getString("Cut"), null);
+            item.setActionListener(new GActionListener() {
+                @Override
+                public void action(GObject gobj) {
+                    if (editMenu.text.editable) {
+                        editMenu.text.doCut();
+                    }
+                    editMenu.dispose();
+                }
+            });
+            item = editMenu.addItem(GLanguage.getString("SeleAll"), null);
+            item.setActionListener(new GActionListener() {
+                @Override
+                public void action(GObject gobj) {
+                    editMenu.text.doSelectAll();
+                }
+            });
+
+            editMenu.setFixed(true);
+            editMenu.setContextMenu(true);
+        }
+        editMenu.text = focus;
+        editMenu.setLocation(mx, my);
+        //editMenu.move(mx - editMenu.getX(), my - editMenu.getY());
+
+        focus.getForm().add(editMenu);
+        //System.out.println("edit menu show");
     }
 
 }

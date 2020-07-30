@@ -120,7 +120,7 @@ s32 java_lang_Class_isInstance(Runtime *runtime, JClass *clazz) {
     RuntimeStack *stack = runtime->stack;
     JClass *cl = insOfJavaLangClass_get_classHandle((Instance *) localvar_getRefer(runtime->localvar, 0));
     Instance *ins = (Instance *) localvar_getRefer(runtime->localvar, 1);
-    if (instance_of(cl, ins, runtime)) {
+    if (instance_of(ins, cl)) {
         push_int(stack, 1);
     } else {
         push_int(stack, 0);
@@ -220,7 +220,7 @@ s32 java_lang_Class_getSuperclass(Runtime *runtime, JClass *clazz) {
     if (cl) {
 
         JClass *scl = getSuperClass(cl);
-        push_ref(stack, insOfJavaLangClass_create_get(runtime, scl));
+        push_ref(stack, scl ? insOfJavaLangClass_create_get(runtime, scl) : NULL);
     } else {
         push_ref(stack, NULL);
     }
@@ -654,9 +654,6 @@ s32 java_lang_Runtime_gc(Runtime *runtime, JClass *clazz) {
     invoke_deepth(runtime);
     jvm_printf("java_lang_Runtime_gc \n");
 #endif
-    jthread_block_enter(runtime);
-    garbage_collect();
-    jthread_block_exit(runtime);
     return 0;
 }
 
@@ -934,6 +931,7 @@ s32 java_lang_System_loadLibrary0(Runtime *runtime, JClass *clazz) {
 
 #else
         utf8_append_c(libname, "/lib");
+        utf8_replace_c(libname, "//", "/");
         utf8_append_c(libname, name_arr->arr_body);
 #if defined(__JVM_OS_MAC__)
         utf8_append_c(libname, ".dylib");

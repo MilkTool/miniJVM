@@ -6,21 +6,18 @@
 package org.mini.glfm;
 
 import org.mini.apploader.AppLoader;
-import org.mini.gui.GApplication;
+import org.mini.gui.GCallBack;
 import org.mini.gui.GForm;
 import org.mini.gui.GObject;
 import org.mini.gui.GToolkit;
-import org.mini.guijni.GuiCallBack;
 import org.mini.nanovg.Nanovg;
-import static org.mini.nanovg.Nanovg.NVG_ANTIALIAS;
-import static org.mini.nanovg.Nanovg.NVG_DEBUG;
-import static org.mini.nanovg.Nanovg.NVG_STENCIL_STROKES;
+
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author Gust
  */
-public class GlfmCallBackImpl extends GuiCallBack {
+public class GlfmCallBackImpl extends GCallBack {
 
     long display;
     int winWidth, winHeight;
@@ -29,24 +26,35 @@ public class GlfmCallBackImpl extends GuiCallBack {
 
     public int mouseX, mouseY, lastX, lastY;
     long mouseLastPressed;
-    int LONG_TOUCH_TIME = 500;
-    int LONG_TOUCH_MAX_DISTANCE = 5;//移动距离超过40单位时可以产生惯性
+    int LONG_TOUCH_TIME = 350;
+    int LONG_TOUCH_MAX_DISTANCE = 5;//
 
-    int INERTIA_MIN_DISTANCE = 20;//移动距离超过40单位时可以产生惯性
-    int INERTIA_MAX_MILLS = 300;//在300毫秒内的滑动可以产生惯性
+    int INERTIA_MIN_DISTANCE = 10;//移动距离超过xx单位时可以产生惯性
+    int INERTIA_MAX_MILLS = 200;//在300毫秒内的滑动可以产生惯性
 
     //
     double moveStartX;
     double moveStartY;
+    double longStartX;
+    double longStartY;
     long moveStartAt;
 
-    GApplication gapp;
-    GForm gform;
 
     long vg;
 
+    float fps;
+    float fpsExpect = 60;
+    long startAt, cost;
+    long last = System.currentTimeMillis(), now;
+    int count = 0;
+
     static GlfmCallBackImpl instance = new GlfmCallBackImpl();
 
+    /**
+     * the glinit method call by native function, glfmapp/main.c
+     *
+     * @param winContext
+     */
     static public void glinit(long winContext) {
 
         Glfm.glfmSetDisplayConfig(winContext,
@@ -56,8 +64,8 @@ public class GlfmCallBackImpl extends GuiCallBack {
                 Glfm.GLFMStencilFormat8,
                 Glfm.GLFMMultisampleNone);
 
-        GuiCallBack.getInstance().setDisplay(winContext);
-        Glfm.glfmSetCallBack(winContext, GuiCallBack.getInstance());
+        GCallBack.getInstance().setDisplay(winContext);
+        Glfm.glfmSetCallBack(winContext, GCallBack.getInstance());
 
     }
 
@@ -79,6 +87,19 @@ public class GlfmCallBackImpl extends GuiCallBack {
     void setForm(GForm form) {
         gform = form;
     }
+
+
+    /**
+     * @return the fps
+     */
+    public float getFps() {
+        return fps;
+    }
+
+    public void setFps(float fps) {
+        fpsExpect = fps;
+    }
+
 
     public long getDisplay() {
         return display;
@@ -136,17 +157,29 @@ public class GlfmCallBackImpl extends GuiCallBack {
 
     @Override
     public void mainLoop(long display, double frameTime) {
-
         try {
-            if (gform != null) {
-                if (gform.getWinContext() == 0) {
-                    gform.init();
-                }
+            startAt = System.currentTimeMillis();
+            if (!gform.isInited()) {
+                gform.init();
             }
             if (GObject.flushReq()) {
                 if (gform != null) {
                     gform.display(vg);
                 }
+            }
+            //
+            count++;
+            now = System.currentTimeMillis();
+            if (now - last > 1000) {
+                //System.out.println("fps:" + count);
+                fps = count;
+                last = now;
+                count = 0;
+            }
+
+            cost = now - startAt;
+            if (cost < 1000 / fpsExpect) {
+                Thread.sleep((long) (1000 / fpsExpect - cost));
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -157,7 +190,7 @@ public class GlfmCallBackImpl extends GuiCallBack {
     public void onSurfaceCreated(long display, int width, int height) {
         init();
         AppLoader.onSurfaceCreated();
-        System.out.println("onSurfaceCreated");
+        System.out.println("onSurfaceCreated " + width + "," + height + "," + pxRatio);
     }
 
     @Override
@@ -218,8 +251,8 @@ public class GlfmCallBackImpl extends GuiCallBack {
                     mouseLastPressed = cur;
 
                     //处理惯性
-                    moveStartX = x;
-                    moveStartY = y;
+                    longStartX = moveStartX = x;
+                    longStartY = moveStartY = y;
                     moveStartAt = System.currentTimeMillis();
                     break;
                 }
@@ -231,7 +264,7 @@ public class GlfmCallBackImpl extends GuiCallBack {
                         form.inertiaEvent((float) moveStartX, (float) moveStartY, (float) x, (float) y, cost);
                     }
                     //检测长按
-                    long_touched = cur - mouseLastPressed > LONG_TOUCH_TIME && Math.abs(x - moveStartX) < LONG_TOUCH_MAX_DISTANCE && Math.abs(y - moveStartY) < LONG_TOUCH_MAX_DISTANCE;
+                    long_touched = cur - mouseLastPressed > LONG_TOUCH_TIME && Math.abs(x - longStartX) < LONG_TOUCH_MAX_DISTANCE && Math.abs(y - longStartY) < LONG_TOUCH_MAX_DISTANCE;
 
                     //处理惯性
                     moveStartX = 0;
@@ -241,6 +274,12 @@ public class GlfmCallBackImpl extends GuiCallBack {
                 }
                 case Glfm.GLFMTouchPhaseMoved: {//
                     form.dragEvent(mouseX - lastX, mouseY - lastY, mouseX, mouseY);
+                    long cost = System.currentTimeMillis() - moveStartAt;
+                    if (cost > INERTIA_MAX_MILLS) {//reset
+                        moveStartX = x;
+                        moveStartY = y;
+                        moveStartAt = System.currentTimeMillis();
+                    }
                     break;
                 }
                 case Glfm.GLFMTouchPhaseHover: {//
@@ -253,7 +292,7 @@ public class GlfmCallBackImpl extends GuiCallBack {
                 form.longTouchedEvent(mouseX, mouseY);
                 long_touched = false;
             }
-            form.touchEvent(phase, mouseX, mouseY);
+            form.touchEvent(touch, phase, mouseX, mouseY);
         }
         GObject.flush();
         return true;
@@ -268,7 +307,6 @@ public class GlfmCallBackImpl extends GuiCallBack {
     public void onSurfaceResize(long window, int width, int height) {
         fbWidth = Glfm.glfmGetDisplayWidth(display);
         fbHeight = Glfm.glfmGetDisplayHeight(display);
-
         // Calculate pixel ration for hi-dpi devices.
         pxRatio = (float) Glfm.glfmGetDisplayScale(display);
         winWidth = (int) (fbWidth / pxRatio);
@@ -277,8 +315,10 @@ public class GlfmCallBackImpl extends GuiCallBack {
         if (gform == null) {
             return;
         }
-        gform.getBoundle()[GObject.WIDTH] = width;
-        gform.getBoundle()[GObject.HEIGHT] = height;
+        //System.out.println(width + "," + height + "," + pxRatio);
+        //System.out.println(winWidth + "," + winHeight);
+        gform.setSize(winWidth, winHeight);
+        gform.onSizeChange(winWidth, winHeight);
         gform.flush();
     }
 
@@ -326,98 +366,7 @@ public class GlfmCallBackImpl extends GuiCallBack {
         gform.onNotify(key, val);
     }
 
-    //============================== glfw
-    @Override
-    public void error(int error, String description) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
 
-    @Override
-    public void monitor(long monitor, boolean connected) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void framebufferSize(long window, int x, int y) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void windowPos(long window, int x, int y) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void windowSize(long window, int width, int height) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public boolean windowClose(long window) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void windowRefresh(long window) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void windowFocus(long window, boolean focused) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void windowIconify(long window, boolean iconified) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void key(long window, int key, int scancode, int action, int mods) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void character(long window, char character) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void mouseButton(long window, int button, boolean pressed) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void cursorPos(long window, int x, int y) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void cursorEnter(long window, boolean entered) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void scroll(long window, double scrollX, double scrollY) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void drop(long window, int count, String[] paths) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void mainLoop() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onMemWarning(long display) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    //==============================
     public String getAppSaveRoot() {
         return Glfm.glfmGetSaveRoot();
     }
@@ -432,33 +381,11 @@ public class GlfmCallBackImpl extends GuiCallBack {
     }
 
     @Override
-    public void destory() {
+    public void destroy() {
         if (vg != 0) {
             Nanovg.nvgDeleteGLES3(vg);
         }
     }
 
-    @Override
-    public GApplication getApplication() {
-        return gapp;
-    }
-
-    @Override
-    public void setApplication(GApplication app) {
-        if (app != null) {
-            if (gapp != null) {
-                gapp.close();
-            }
-            gapp = app;
-            setForm(app.getForm(app));
-        }
-    }
-
-    @Override
-    public void notifyCurrentFormChanged(GApplication app) {
-        if (gapp == app) {
-            setForm(app.getForm(app));
-        }
-    }
 
 }

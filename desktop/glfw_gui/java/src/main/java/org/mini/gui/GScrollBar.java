@@ -6,40 +6,25 @@
 package org.mini.gui;
 
 import org.mini.glfm.Glfm;
-import static org.mini.gui.GObject.LEFT;
-import static org.mini.gui.GObject.isInBoundle;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
-import static org.mini.nanovg.Nanovg.NVG_HOLE;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgBoxGradient;
-import static org.mini.nanovg.Nanovg.nvgCircle;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgLinearGradient;
-import static org.mini.nanovg.Nanovg.nvgPathWinding;
-import static org.mini.nanovg.Nanovg.nvgRadialGradient;
-import static org.mini.nanovg.Nanovg.nvgRect;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgStroke;
-import static org.mini.nanovg.Nanovg.nvgStrokeColor;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GScrollBar extends GObject {
-
-    String text;
-    float pos;
-    boolean draged;
     public static final int HORIZONTAL = 0, VERTICAL = 1;
-    int mode = HORIZONTAL;
-    float radius = 8;
-    float[] line_boundle = new float[4];
+
+    protected String text;
+    protected float pos;
+    protected boolean draged;
+    protected int mode = HORIZONTAL;
+    protected float radius = 8;
+    protected float[] line_boundle = new float[4];
 
     public GScrollBar() {
-
+        this(0f, HORIZONTAL, 0f, 0f, 1f, 1f);
     }
 
     public GScrollBar(float pos, int mode, int left, int top, int width, int height) {
@@ -80,9 +65,6 @@ public class GScrollBar extends GObject {
         }
     }
 
-    public int getType() {
-        return TYPE_SCROLLBAR;
-    }
 
     public float getPos() {
         return pos;
@@ -141,7 +123,7 @@ public class GScrollBar extends GObject {
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         int rx = (int) (x - getX());
         int ry = (int) (y - getY());
         if (isInBoundle(line_boundle, rx, ry)) {
@@ -166,11 +148,10 @@ public class GScrollBar extends GObject {
     }
 
     /**
-     *
      * @param vg
      * @return
      */
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX() + line_boundle[LEFT];
         float y = getY() + line_boundle[TOP];
         float w = line_boundle[WIDTH];

@@ -694,6 +694,58 @@ int org_mini_glfm_Glfm_glfmImageCrop(Runtime *runtime, JClass *clazz) {
     return 0;
 }
 
+
+int org_mini_glfm_Glfm_glfmPlayVideo(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    s32 pos=0;
+    GLFMDisplay *window = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    Instance *jstr = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *jstrMime = env->localvar_getRefer(runtime->localvar, pos++);
+    Utf8String *ustr = env->utf8_create();
+    Utf8String *ustrMime = env->utf8_create();
+    env->jstring_2_utf8(jstr, ustr);
+    env->jstring_2_utf8(jstrMime, ustrMime);
+    void *panel = playVideo(window, env->utf8_cstr(ustr), env->utf8_cstr(ustrMime));
+    env->utf8_destory(ustr);
+    env->utf8_destory(ustrMime);
+    env->push_long(runtime->stack, (s64)(intptr_t)panel);
+    return 0;
+}
+
+int org_mini_glfm_Glfm_glfmStartVideo(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    s32 pos=0;
+    GLFMDisplay *window = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    void *panel = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    startVideo(window, panel);
+    return 0;
+}
+
+int org_mini_glfm_Glfm_glfmPauseVideo(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    s32 pos=0;
+    GLFMDisplay *window = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    void *panel = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    pauseVideo(window, panel);
+    return 0;
+}
+
+int org_mini_glfm_Glfm_glfmStopVideo(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    s32 pos=0;
+    GLFMDisplay *window = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    void *panel = (__refer) (intptr_t) env->localvar_getLong_2slot(runtime->localvar, pos);
+    pos+=2;
+    stopVideo(window, panel);
+    return 0;
+}
+
 /* ==============================   jni utils =================================*/
 
 int org_mini_glfm_utils_Gutil_f2b(Runtime *runtime, JClass *clazz) {
@@ -751,8 +803,10 @@ int org_mini_glfm_utils_Gutil_vec_sub(Runtime *runtime, JClass *clazz) {
 float vec_mul_inner(Instance *aa, Instance *ba) {
     int i;
     float r = 0;
+    GLfloat *a = (GLfloat *) aa->arr_body;
+    GLfloat *b = (GLfloat *) ba->arr_body;
     for (i = 0; i < aa->arr_length; ++i)
-        r += aa->arr_body[i] * ba->arr_body[i];
+        r += a[i] * b[i];
     return r;
 }
 
@@ -823,6 +877,34 @@ int org_mini_glfm_utils_Gutil_vec_reflect(Runtime *runtime, JClass *clazz) {
     int i;
     for (i = 0; i < 4; ++i)
         r[i] = a[i] - p * b[i];
+    env->push_ref(runtime->stack, ra);
+    return 0;
+}
+
+int org_mini_glfw_utils_Gutil_vec4_slerp(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    int pos = 0;
+    Instance *ra = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *aa = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *ba = env->localvar_getRefer(runtime->localvar, pos++);
+    Int2Float i2f;
+    i2f.i = env->localvar_getInt(runtime->localvar, pos++);
+    GLfloat *r = (GLfloat *) ra->arr_body;
+    GLfloat *a = (GLfloat *) aa->arr_body;
+    GLfloat *b = (GLfloat *) ba->arr_body;
+    vec4_slerp(r, a, b, i2f.f);
+    env->push_ref(runtime->stack, ra);
+    return 0;
+}
+
+int org_mini_glfw_utils_Gutil_vec4_from_mat4x4(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    int pos = 0;
+    Instance *ra = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *aa = env->localvar_getRefer(runtime->localvar, pos++);
+    GLfloat *r = (GLfloat *) ra->arr_body;
+    GLfloat *a = (GLfloat *) aa->arr_body;
+    quat_from_mat4x4(r, a);
     env->push_ref(runtime->stack, ra);
     return 0;
 }
@@ -1134,6 +1216,19 @@ int org_mini_glfm_utils_Gutil_mat4x4_look_at(Runtime *runtime, JClass *clazz) {
     return 0;
 }
 
+int org_mini_glfw_utils_Gutil_mat4x4_trans_rotate_scale(Runtime *runtime, JClass *clazz) {
+    JniEnv *env = runtime->jnienv;
+    int pos = 0;
+    Instance *r = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *vec3_trans = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *vec4_rotate = env->localvar_getRefer(runtime->localvar, pos++);
+    Instance *vec3_scale = env->localvar_getRefer(runtime->localvar, pos++);
+    mat4x4_trans_rotate_scale((vec4 *) r->arr_body, (float *) vec3_trans->arr_body,
+                              (float *) vec4_rotate->arr_body,
+                              (float *) vec3_scale->arr_body);
+    env->push_ref(runtime->stack, r);
+    return 0;
+}
 
 static java_native_method method_glfm_table[] = {
     {"org/mini/nanovg/Gutil", "f2b",                        "([F[B)[B",                         org_mini_glfm_utils_Gutil_f2b},
@@ -1145,6 +1240,8 @@ static java_native_method method_glfm_table[] = {
     {"org/mini/nanovg/Gutil", "vec_normal",                 "([F[F)[F",                         org_mini_glfm_utils_Gutil_vec_normal},
     {"org/mini/nanovg/Gutil", "vec_mul_cross",              "([F[F[F)[F",                       org_mini_glfm_utils_Gutil_vec_mul_cross},
     {"org/mini/nanovg/Gutil", "vec_reflect",                "([F[F[F)[F",                       org_mini_glfm_utils_Gutil_vec_reflect},
+        {"org/mini/nanovg/Gutil", "vec4_slerp",                 "([F[F[FF)[F",                      org_mini_glfw_utils_Gutil_vec4_slerp},
+        {"org/mini/nanovg/Gutil", "vec4_from_mat4x4",                 "([F[F[FF)[F",                      org_mini_glfw_utils_Gutil_vec4_from_mat4x4},
     {"org/mini/nanovg/Gutil", "mat4x4_identity",            "([F)[F",                           org_mini_glfm_utils_Gutil_mat4x4_identity},
     {"org/mini/nanovg/Gutil", "mat4x4_dup",                 "([F[F)[F",                         org_mini_glfm_utils_Gutil_mat4x4_dup},
     {"org/mini/nanovg/Gutil", "mat4x4_row",                 "([F[FI)[F",                        org_mini_glfm_utils_Gutil_mat4x4_row},
@@ -1169,6 +1266,7 @@ static java_native_method method_glfm_table[] = {
     {"org/mini/nanovg/Gutil", "mat4x4_frustum",             "([FFFFFFF)[F",                     org_mini_glfm_utils_Gutil_mat4x4_frustum},
     {"org/mini/nanovg/Gutil", "mat4x4_perspective",         "([FFFFF)[F",                       org_mini_glfm_utils_Gutil_mat4x4_perspective},
     {"org/mini/nanovg/Gutil", "mat4x4_look_at",             "([F[F[F[F)[F",                     org_mini_glfm_utils_Gutil_mat4x4_look_at},
+        {"org/mini/nanovg/Gutil", "mat4x4_trans_rotate_scale",  "([F[F[F[F)[F",                     org_mini_glfw_utils_Gutil_mat4x4_trans_rotate_scale},
     {"org/mini/glfm/Glfm",        "glfmSetCallBack",                 "(JLorg/mini/glfm/GlfmCallBack;)V", org_mini_glfm_Glfm_glfmSetUserData},
         {"org/mini/glfm/Glfm",        "glfmSetDisplayConfig",            "(JIIIII)V",                        org_mini_glfm_Glfm_glfmSetDisplayConfig},
         {"org/mini/glfm/Glfm",        "glfmSetUserInterfaceOrientation", "(JI)V",                            org_mini_glfm_Glfm_glfmSetUserInterfaceOrientation},
@@ -1194,6 +1292,10 @@ static java_native_method method_glfm_table[] = {
         {"org/mini/glfm/Glfm",        "glfmPickPhotoAlbum",              "(JII)V",                            org_mini_glfm_Glfm_glfmPickPhotoAlbum},
         {"org/mini/glfm/Glfm",        "glfmPickPhotoCamera",             "(JII)V",                             org_mini_glfm_Glfm_glfmPickPhotoCamera},
         {"org/mini/glfm/Glfm",        "glfmImageCrop",                   "(JILjava/lang/String;IIII)V",         org_mini_glfm_Glfm_glfmImageCrop},
+        {"org/mini/glfm/Glfm",        "glfmPlayVideo",                   "(JLjava/lang/String;Ljava/lang/String;)J",         org_mini_glfm_Glfm_glfmPlayVideo},
+        {"org/mini/glfm/Glfm",        "glfmPauseVideo",                   "(JJ)V",         org_mini_glfm_Glfm_glfmPauseVideo},
+        {"org/mini/glfm/Glfm",        "glfmStopVideo",                   "(JJ)V",         org_mini_glfm_Glfm_glfmStopVideo},
+        {"org/mini/glfm/Glfm",        "glfmStartVideo",                   "(JJ)V",         org_mini_glfm_Glfm_glfmStartVideo},
 
 };
 

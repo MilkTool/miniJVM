@@ -5,49 +5,28 @@ package org.mini.glfw;
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-import java.io.File;
+
 import org.mini.apploader.AppLoader;
-import static org.mini.gl.GL.GL_TRUE;
-import static org.mini.glfw.Glfw.GLFW_CONTEXT_VERSION_MAJOR;
-import static org.mini.glfw.Glfw.GLFW_CONTEXT_VERSION_MINOR;
-import static org.mini.glfw.Glfw.GLFW_DEPTH_BITS;
-import static org.mini.glfw.Glfw.GLFW_KEY_ESCAPE;
-import static org.mini.glfw.Glfw.GLFW_OPENGL_CORE_PROFILE;
-import static org.mini.glfw.Glfw.GLFW_OPENGL_FORWARD_COMPAT;
-import static org.mini.glfw.Glfw.GLFW_OPENGL_PROFILE;
-import static org.mini.glfw.Glfw.GLFW_PRESS;
-import static org.mini.glfw.Glfw.GLFW_TRANSPARENT_FRAMEBUFFER;
-import static org.mini.glfw.Glfw.GLFW_TRUE;
-import static org.mini.glfw.Glfw.glfwGetFramebufferHeight;
-import static org.mini.glfw.Glfw.glfwGetFramebufferWidth;
-import static org.mini.glfw.Glfw.glfwPollEvents;
-import static org.mini.glfw.Glfw.glfwSetWindowShouldClose;
-import static org.mini.glfw.Glfw.glfwSwapBuffers;
-import static org.mini.glfw.Glfw.glfwSwapInterval;
-import static org.mini.glfw.Glfw.glfwTerminate;
-import static org.mini.glfw.Glfw.glfwWindowHint;
-import static org.mini.glfw.Glfw.glfwWindowShouldClose;
 import org.mini.gui.GApplication;
-import org.mini.gui.GForm;
+import org.mini.gui.GCallBack;
 import org.mini.gui.GObject;
 import org.mini.gui.GToolkit;
+import org.mini.nanovg.Gutil;
+
+import java.io.File;
+
+import static org.mini.gl.GL.GL_TRUE;
+import static org.mini.glfw.Glfw.*;
 import static org.mini.gui.GObject.HEIGHT;
 import static org.mini.gui.GObject.WIDTH;
-import org.mini.guijni.GuiCallBack;
-import org.mini.nanovg.Gutil;
-import static org.mini.nanovg.Nanovg.NVG_ANTIALIAS;
-import static org.mini.nanovg.Nanovg.NVG_STENCIL_STROKES;
-import static org.mini.nanovg.Nanovg.nvgCreateGL3;
-import static org.mini.nanovg.Nanovg.nvgDeleteGL3;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author Gust
  */
-public class GlfwCallBackImpl extends GuiCallBack {
+public class GlfwCallBackImpl extends GCallBack {
 
-    GApplication gapp;
-    GForm gform;
+
     long display;
 
     int winWidth, winHeight;
@@ -64,8 +43,8 @@ public class GlfwCallBackImpl extends GuiCallBack {
     long vg;
 
     //not in mobile
-    int fps;
-    int fpsExpect = 60;
+    float fps;
+    float fpsExpect = 60;
 
     public GlfwCallBackImpl() {
     }
@@ -76,14 +55,6 @@ public class GlfwCallBackImpl extends GuiCallBack {
 
     public long getDisplay() {
         return display;
-    }
-
-    public GForm getForm() {
-        return gform;
-    }
-
-    public void setForm(GForm form) {
-        gform = form;
     }
 
     public long getNvContext() {
@@ -117,6 +88,7 @@ public class GlfwCallBackImpl extends GuiCallBack {
     public void setDisplayTitle(String title) {
         Glfw.glfwSetWindowTitle(display, title);
     }
+
 
     public void init(int width, int height) {
         this.winWidth = width;
@@ -173,14 +145,12 @@ public class GlfwCallBackImpl extends GuiCallBack {
         long last = System.currentTimeMillis(), now;
         int count = 0;
 
-        long startAt, endAt, cost;
+        long startAt, cost;
         while (!glfwWindowShouldClose(display)) {
             try {
                 startAt = System.currentTimeMillis();
-                if (gform != null) {
-                    if (gform.getWinContext() == 0) {
-                        gform.init();
-                    }
+                if (!gform.isInited()) {
+                    gform.init();
                 }
                 //user define contents
                 if (GObject.flushReq()) {
@@ -197,8 +167,7 @@ public class GlfwCallBackImpl extends GuiCallBack {
                     count = 0;
                 }
 
-                endAt = System.currentTimeMillis();
-                cost = endAt - startAt;
+                cost = now - startAt;
                 if (cost < 1000 / fpsExpect) {
                     Thread.sleep((long) (1000 / fpsExpect - cost));
                 }
@@ -209,12 +178,23 @@ public class GlfwCallBackImpl extends GuiCallBack {
         }
     }
 
-    public void destory() {
+    public void destroy() {
         nvgDeleteGL3(vg);
         glfwTerminate();
         GToolkit.removeForm(vg);
         vg = 0;
         System.exit(0);//some thread not exit ,that will continue running
+    }
+
+    /**
+     * @return the fps
+     */
+    public float getFps() {
+        return fps;
+    }
+
+    public void setFps(float fps) {
+        fpsExpect = fps;
     }
 
     @Override
@@ -260,6 +240,7 @@ public class GlfwCallBackImpl extends GuiCallBack {
                         drag = true;
                         hoverX = mouseX;
                         hoverY = mouseY;
+                        //gform.longTouchedEvent(mouseX, mouseY);
                     } else {
                         drag = false;
                     }
@@ -322,9 +303,18 @@ public class GlfwCallBackImpl extends GuiCallBack {
 
     @Override
     public void windowSize(long window, int width, int height) {
+        winWidth = Glfw.glfwGetWindowWidth(display);
+        winHeight = Glfw.glfwGetWindowHeight(display);
+        fbWidth = glfwGetFramebufferWidth(display);
+        fbHeight = glfwGetFramebufferHeight(display);
+        // Calculate pixel ration for hi-dpi devices.
+        pxRatio = (float) fbWidth / (float) winWidth;
+
         if (gform == null) {
             return;
         }
+        gform.setSize(width, height);
+        gform.onSizeChange(width, height);
         gform.flush();
     }
 
@@ -375,72 +365,6 @@ public class GlfwCallBackImpl extends GuiCallBack {
     public void cursorEnter(long window, boolean entered) {
     }
 
-    //============================== glfm
-    @Override
-    public void mainLoop(long display, double frameTime) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public boolean onTouch(long display, int touch, int phase, double x, double y) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public boolean onKey(long display, int keyCode, int action, int modifiers) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onCharacter(long display, String str, int modifiers) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onKeyboardVisible(long display, boolean visible, double x, double y, double w, double h) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onSurfaceError(long display, String description) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onSurfaceCreated(long display, int width, int height) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onSurfaceResize(long display, int width, int height) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onSurfaceDestroyed(long display) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onMemWarning(long display) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onAppFocus(long display, boolean focused) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onPhotoPicked(long display, int uid, String url, byte[] data) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void onNotify(long display, String key, String val) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
     //==============================
     @Override
     public String getAppSaveRoot() {
@@ -457,21 +381,5 @@ public class GlfwCallBackImpl extends GuiCallBack {
         return gapp;
     }
 
-    @Override
-    public void setApplication(GApplication app) {
-        if (app != null) {
-            if (gapp != null) {
-                gapp.close();
-            }
-            gapp = app;
-            setForm(app.getForm(app));
-        }
-    }
 
-    @Override
-    public void notifyCurrentFormChanged(GApplication app) {
-        if (gapp == app) {
-            setForm(app.getForm(app));
-        }
-    }
 }

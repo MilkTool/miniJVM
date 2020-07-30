@@ -6,35 +6,23 @@
 package org.mini.gui;
 
 import org.mini.glfm.Glfm;
-import static org.mini.gui.GObject.isInBoundle;
-import static org.mini.nanovg.Gutil.toUtf8;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_LEFT;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_MIDDLE;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgBoxGradient;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgFontFace;
-import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
-import static org.mini.nanovg.Nanovg.nvgTextJni;
+import static org.mini.nanovg.Gutil.toUtf8;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GCheckBox extends GObject {
 
-    String text;
-    byte[] text_arr;
-    boolean checked;
-    byte[] preicon_arr = toUtf8("" + ICON_CHECK);
+    protected String text;
+    protected byte[] text_arr;
+    protected boolean checked;
+    protected byte[] preicon_arr = toUtf8("" + ICON_CHECK);
 
     public GCheckBox() {
-
+        this("", false, 0f, 0f, 1f, 1f);
     }
 
     public GCheckBox(String text, boolean checked, int left, int top, int width, int height) {
@@ -48,13 +36,14 @@ public class GCheckBox extends GObject {
         setSize(width, height);
     }
 
-    public int getType() {
-        return TYPE_CHECKBOX;
-    }
 
-    public final void setText(String text) {
+    public void setText(String text) {
         this.text = text;
         text_arr = toUtf8(text);
+    }
+
+    public String getText() {
+        return text;
     }
 
     @Override
@@ -70,7 +59,7 @@ public class GCheckBox extends GObject {
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         if (isInArea(x, y)) {
             if (phase == Glfm.GLFMTouchPhaseBegan) {
                 checked = !checked;
@@ -80,12 +69,11 @@ public class GCheckBox extends GObject {
     }
 
     /**
-     *
      * @param vg
      * @return
      */
     @Override
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();

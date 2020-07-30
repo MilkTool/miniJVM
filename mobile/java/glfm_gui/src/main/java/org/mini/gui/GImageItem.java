@@ -6,42 +6,30 @@
 package org.mini.gui;
 
 import org.mini.glfm.Glfm;
-import static org.mini.gui.GObject.isInBoundle;
+import org.mini.glfw.Glfw;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
-import static org.mini.nanovg.Nanovg.NVG_HOLE;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgBoxGradient;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgImagePattern;
-import static org.mini.nanovg.Nanovg.nvgImageSize;
-import static org.mini.nanovg.Nanovg.nvgPathWinding;
-import static org.mini.nanovg.Nanovg.nvgRect;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgStroke;
-import static org.mini.nanovg.Nanovg.nvgStrokeColor;
-import static org.mini.nanovg.Nanovg.nvgStrokeWidth;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author Gust
  */
 public class GImageItem extends GObject {
 
-    GImage img;
-    float alpha = 1.f;
-    boolean drawBoader = true;
+    protected GImage img;
+    protected float alpha = 1.f;
+    protected boolean drawBorder = true;
+
+    public GImageItem() {
+
+    }
 
     public GImageItem(GImage img) {
         this.img = img;
     }
 
-    @Override
-    public int getType() {
-        return TYPE_IMAGEITEM;
-    }
 
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
 
         float x = getX();
         float y = getY();
@@ -65,7 +53,7 @@ public class GImageItem extends GObject {
             ix = -(iw - w) * 0.5f;
             iy = 0;
         }
-        if (drawBoader) {
+        if (drawBorder) {
             if (img == null) {
                 return true;
             }
@@ -131,23 +119,23 @@ public class GImageItem extends GObject {
     }
 
     /**
-     * @return the drawBoader
+     * @return the drawBorder
      */
-    public boolean isDrawBoader() {
-        return drawBoader;
+    public boolean isDrawBorder() {
+        return drawBorder;
     }
 
     /**
-     * @param drawBoader the drawBoader to set
+     * @param drawBorder the drawBorder to set
      */
-    public void setDrawBoader(boolean drawBoader) {
-        this.drawBoader = drawBoader;
+    public void setDrawBorder(boolean drawBorder) {
+        this.drawBorder = drawBorder;
     }
 
     boolean bt_pressed;
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         if (isInArea(x, y)) {
             if (phase == Glfm.GLFMTouchPhaseBegan) {
                 bt_pressed = true;
@@ -157,6 +145,21 @@ public class GImageItem extends GObject {
             } else if (!isInArea(x, y)) {
                 bt_pressed = false;
             }
+        }
+    }
+
+    public void mouseButtonEvent(int button, boolean pressed, int x, int y) {
+        if (isInArea(x, y)) {
+            if (button == Glfw.GLFW_MOUSE_BUTTON_1) {//left
+                if (pressed) {
+                    bt_pressed = true;
+                } else {
+                    doAction();
+                    bt_pressed = false;
+                }
+            }
+        } else {
+            bt_pressed = false;
         }
     }
 }

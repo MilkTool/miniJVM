@@ -5,36 +5,17 @@
  */
 package org.mini.gui;
 
-import java.util.Timer;
-import static org.mini.gui.GToolkit.nvgRGBA;
 import org.mini.gui.event.GActionListener;
 import org.mini.gui.event.GFocusChangeListener;
 
+import java.util.Timer;
+
+import static org.mini.gui.GToolkit.nvgRGBA;
+
 /**
- *
  * @author gust
  */
 abstract public class GObject {
-
-    public static final int TYPE_UNKNOW = -1;
-    public static final int TYPE_BUTTON = 0;
-    public static final int TYPE_CANVAS = 1;
-    public static final int TYPE_CHECKBOX = 3;
-    public static final int TYPE_COLORSELECTOR = 4;
-    public static final int TYPE_FORM = 5;
-    public static final int TYPE_FRAME = 6;
-    public static final int TYPE_LABEL = 7;
-    public static final int TYPE_LIST = 8;
-    public static final int TYPE_LISTITEM = 9;
-    public static final int TYPE_MENU = 10;
-    public static final int TYPE_MENUITEM = 11;
-    public static final int TYPE_PANEL = 12;
-    public static final int TYPE_SCROLLBAR = 13;
-    public static final int TYPE_TEXTBOX = 14;
-    public static final int TYPE_TEXTFIELD = 15;
-    public static final int TYPE_VIEWPORT = 16;
-    public static final int TYPE_IMAGEITEM = 17;
-    public static final int TYPE_EDITMENU = 18;
 
     //
     public static final int ALIGN_H_FULL = 1;
@@ -47,23 +28,26 @@ abstract public class GObject {
     public static char ICON_LOGIN = 0xE740;
     public static char ICON_TRASH = 0xE729;
     //
-    protected GContainer parent;
-
-    protected float[] boundle = new float[4];
-
     public static final int LEFT = 0;
     public static final int TOP = 1;
     public static final int WIDTH = 2;
     public static final int HEIGHT = 3;
 
+    volatile static int flush;
+
+    protected GContainer parent;
+
+    protected float[] boundle = new float[4];
+
     protected float[] bgColor;
     protected float[] color;
+
+    protected float fontSize;
 
     protected GActionListener actionListener;
 
     protected GFocusChangeListener focusListener;
 
-    volatile static int flush;
 
     protected boolean visible = true;
 
@@ -73,7 +57,11 @@ abstract public class GObject {
 
     protected String name;
 
+    protected String text;
+
     protected Object attachment;
+
+    protected Object xmlAgent;
 
     /**
      *
@@ -82,10 +70,9 @@ abstract public class GObject {
 
     }
 
-    public void destory() {
+    public void destroy() {
     }
 
-    public abstract int getType();
 
     static synchronized public void flush() {
         flush = 3;
@@ -116,7 +103,7 @@ abstract public class GObject {
         return null;
     }
 
-    public boolean update(long ctx) {
+    public boolean paint(long ctx) {
         return true;
     }
 
@@ -151,7 +138,7 @@ abstract public class GObject {
     public void characterEvent(String str, int modifiers) {
     }
 
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
     }
 
     public boolean scrollEvent(float scrollX, float scrollY, float x, float y) {
@@ -199,7 +186,7 @@ abstract public class GObject {
         boundle[LEFT] = x;
         boundle[TOP] = y;
         if (parent != null) {
-            parent.reBoundle();
+            parent.reSize();
         }
     }
 
@@ -207,7 +194,7 @@ abstract public class GObject {
         boundle[WIDTH] = w;
         boundle[HEIGHT] = h;
         if (parent != null) {
-            parent.reBoundle();
+            parent.reSize();
         }
     }
 
@@ -245,7 +232,7 @@ abstract public class GObject {
         boundle[LEFT] += dx;
         boundle[TOP] += dy;
         if (parent != null) {
-            parent.reBoundle();
+            parent.reSize();
         }
     }
 
@@ -285,6 +272,18 @@ abstract public class GObject {
      */
     public void setColor(int r, int g, int b, int a) {
         color = nvgRGBA((byte) r, (byte) g, (byte) b, (byte) a);
+    }
+
+    public void setColor(float[] color) {
+        this.color = color;
+    }
+
+    public float getFontSize() {
+        return fontSize;
+    }
+
+    public void setFontSize(float fontSize) {
+        this.fontSize = fontSize;
     }
 
     /**
@@ -373,6 +372,15 @@ abstract public class GObject {
         this.attachment = attachment;
     }
 
+
+    public Object getXmlAgent() {
+        return xmlAgent;
+    }
+
+    public void setXmlAgent(Object xmlAgent) {
+        this.xmlAgent = xmlAgent;
+    }
+
     /**
      * @return the front
      */
@@ -403,5 +411,17 @@ abstract public class GObject {
         if (focusListener != null) {
             focusListener.focusGot(oldgo);
         }
+    }
+
+    public String toString() {
+        return super.toString() + "(" + boundle[LEFT] + "," + boundle[TOP] + "," + boundle[WIDTH] + "," + boundle[HEIGHT] + ")";
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public String getText() {
+        return this.text;
     }
 }

@@ -8,9 +8,9 @@
 //======================= global var =============================
 
 char *STRS_CLASS_EXCEPTION[] = {
-        "java.io.OutOfMemoryError",
-        "java.io.VirtualMachineError",
-        "java.io.NoClassDefFoundError",
+        "java.lang.OutOfMemoryError",
+        "java.lang.VirtualMachineError",
+        "java.lang.NoClassDefFoundError",
         "java.io.EOFException",
         "java.io.IOException",
         "java.lang.FileNotFoundException",
@@ -25,6 +25,7 @@ char *STRS_CLASS_EXCEPTION[] = {
         "java.lang.InstantiationException",
 };
 
+c8 *STR_CLASS_JAVA_LANG_INTEGER = "java/lang/Integer";
 c8 *STR_CLASS_JAVA_LANG_STRING = "java/lang/String";
 c8 *STR_CLASS_JAVA_LANG_STRINGBUILDER = "java/lang/StringBuilder";
 c8 *STR_CLASS_JAVA_LANG_OBJECT = "java/lang/Object";
@@ -66,7 +67,7 @@ GcCollector *collector;
 JniEnv jnienv;
 
 
-c8 *data_type_str = "    ZCFDBSIJL[";
+c8 *data_type_str = "    ZCFDBSIJL[R";
 
 s32 data_type_bytes[DATATYPE_COUNT] = {0, 0, 0, 0,
                                        sizeof(c8),
@@ -79,6 +80,7 @@ s32 data_type_bytes[DATATYPE_COUNT] = {0, 0, 0, 0,
                                        sizeof(s64),
                                        sizeof(__refer),
                                        sizeof(__refer),
+                                       sizeof(__refer),
 };
 s32 STACK_LENGHT_MAX = 4096;
 s32 STACK_LENGHT_INIT = 4096;
@@ -87,7 +89,8 @@ s64 GARBAGE_PERIOD_MS = 1 * 1000;
 
 s64 MAX_HEAP_SIZE = 30 * 1024 * 1024;
 
-
+s32 jdwp_enable = 0;
+s32 jdwp_suspend_on_start = 0;
 //
 OptimizeCache jvm_runtime_cache;
 //

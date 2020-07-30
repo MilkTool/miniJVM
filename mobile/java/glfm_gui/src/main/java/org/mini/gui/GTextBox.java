@@ -19,24 +19,6 @@ import static org.mini.nanovg.Nanovg.*;
  * @author gust
  */
 public class GTextBox extends GTextObject {
-
-    //
-    float[] lineh = {0};
-    private int caretIndex;//光标在字符串中的位置
-
-    int selectStart = -1;//选取开始
-    int selectEnd = -1;//选取结束
-    boolean adjustSelStart = true;//是修改选择起点还是终点
-    boolean selectAdjusted;//在选取状态下,如果点击了,但是没有修改位置,取消选取状态
-
-    int totalRows;//字符串总行数，动态计算出
-    int showRows;//可显示行数
-
-    short[][] area_detail;
-    int scrollDelta;
-    float scroll = 0;//0-1 区间,描述窗口滚动条件位置, 滚动符0-1分别对应文本顶部超出显示区域的高度百分比
-    float totalTextHeight;//字符串总高度
-    float showAreaHeight;//显示区域高度
     //
     static final int AREA_DETAIL_ADD = 7;//额外增加slot数量
     static final int AREA_START = 4;//字符串起点位置
@@ -48,9 +30,28 @@ public class GTextBox extends GTextObject {
     static final int AREA_H = HEIGHT;
 
     //
-    boolean mouseDrag;
+    protected float[] lineh = {0};
+    protected  int caretIndex;//光标在字符串中的位置
+
+    protected int selectStart = -1;//选取开始
+    protected int selectEnd = -1;//选取结束
+    protected boolean adjustSelStart = true;//是修改选择起点还是终点
+    protected boolean selectAdjusted;//在选取状态下,如果点击了,但是没有修改位置,取消选取状态
+
+    protected int totalRows;//字符串总行数，动态计算出
+    protected int showRows;//可显示行数
+
+    protected short[][] area_detail;
+    protected int scrollDelta;
+    protected float scroll = 0;//0-1 区间,描述窗口滚动条件位置, 滚动符0-1分别对应文本顶部超出显示区域的高度百分比
+    protected float totalTextHeight;//字符串总高度
+    protected float showAreaHeight;//显示区域高度
+
+    //
+    protected boolean mouseDrag;
 
     public GTextBox() {
+        this("", "", 0f, 0f, 1f, 1f);
     }
 
     public GTextBox(String text, String hint, int left, int top, int width, int height) {
@@ -66,9 +67,6 @@ public class GTextBox extends GTextObject {
         setFocusListener(this);
     }
 
-    public int getType() {
-        return TYPE_TEXTBOX;
-    }
 
     boolean isInArea(short[] bound, float x, float y) {
         return x >= bound[LEFT] && x <= bound[LEFT] + bound[WIDTH]
@@ -160,13 +158,14 @@ public class GTextBox extends GTextObject {
                     mouseDrag = false;
                     if (selectEnd == -1 || selectStart == selectEnd) {
                         resetSelect();
+                        GToolkit.disposeEditMenu();
                     }
                 }
             } else if (button == Glfw.GLFW_MOUSE_BUTTON_2) {
                 if (pressed) {
 
                 } else {
-                    callEditMenu(this, x, y);
+                    GToolkit.callEditMenu(this, x, y);
                 }
             }
 
@@ -303,7 +302,7 @@ public class GTextBox extends GTextObject {
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
         if (isInArea(x, y)) {
             switch (phase) {
                 case Glfm.GLFMTouchPhaseBegan: {
@@ -327,7 +326,7 @@ public class GTextBox extends GTextObject {
                 case Glfm.GLFMTouchPhaseEnded: {
                     if (selectMode) {
                         if (selectStart != -1) {
-                            callEditMenu(this, x, y);
+                            GToolkit.callEditMenu(this, x, y);
                         }
                     }
                     break;
@@ -335,12 +334,13 @@ public class GTextBox extends GTextObject {
                 case Glfm.GLFMTouchPhaseMoved: {
                     if (selectMode) {
                         int caret = getCaretIndexFromArea(x, y);
+                        int mid = selectStart + (selectEnd - selectStart) / 2;
                         if (adjustSelStart) {
-                            if (caret < selectEnd) {
+                            if (caret < mid) {
                                 selectStart = caret;
 
                             }
-                        } else if (caret > selectStart) {
+                        } else if (caret > mid) {
                             selectEnd = caret;
                             setCaretIndex(selectEnd);
                         }
@@ -352,7 +352,7 @@ public class GTextBox extends GTextObject {
                     break;
             }
         }
-        super.touchEvent(phase, x, y);
+        super.touchEvent(touchid, phase, x, y);
     }
 
     /**
@@ -469,19 +469,23 @@ public class GTextBox extends GTextObject {
 
             @Override
             public void run() {
-                speed -= resistance;//速度和阴力抵消为0时,退出滑动
-                //System.out.println("count :" + count + "    inertia :" + speed + "    resistance :" + resistance);
+                try {
+                    speed -= resistance;//速度和阴力抵消为0时,退出滑动
+                    //System.out.println("count :" + count + "    inertia :" + speed + "    resistance :" + resistance);
 
-                float dh = getOutOfShowAreaHeight();
-                if (dh > 0) {
-                    setScroll(scroll - (float) speed / dh);
-                }
-                flush();
-                if (count++ > maxMoveCount) {
-                    try {
-                        this.cancel();
-                    } catch (Exception e) {
+                    float dh = getOutOfShowAreaHeight();
+                    if (dh > 0) {
+                        setScroll(scroll - (float) speed / dh);
                     }
+                    flush();
+                    if (count++ > maxMoveCount) {
+                        try {
+                            this.cancel();
+                        } catch (Exception e) {
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         };
@@ -494,19 +498,26 @@ public class GTextBox extends GTextObject {
 
     @Override
     public boolean scrollEvent(float scrollX, float scrollY, float x, float y) {
-        return dragEvent(scrollX, scrollY, x, y);
+        float dh = getOutOfShowAreaHeight();
+        if (dh > 0) {
+            return setScroll(scroll - (float) scrollY / dh);
+        }
+        return true;
     }
 
     @Override
     public boolean dragEvent(float dx, float dy, float x, float y) {
-        if (selectMode || mouseDrag) {
+        if (mouseDrag) {
+            return true;
+        }
+        if (selectMode) {
             return false;
         }
         float dh = getOutOfShowAreaHeight();
         if (dh > 0) {
-            return setScroll(scroll - (float) dy / dh);
+            setScroll(scroll - (float) dy / dh);
         }
-        return false;
+        return true;
     }
 
     boolean setScroll(float p) {
@@ -625,7 +636,7 @@ public class GTextBox extends GTextObject {
      * @return
      */
     @Override
-    public boolean update(long vg) {
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();
@@ -648,7 +659,7 @@ public class GTextBox extends GTextObject {
         float dx = text_area[LEFT];
         float dy = text_area[TOP];
 
-        //sometime the field text_arr and area_detail may set as null by other thread when update 
+        //sometime the field text_arr and area_detail may set as null by other thread when paint
         byte[] local_arr = this.text_arr;
         short[][] local_detail = this.area_detail;
 
@@ -793,6 +804,7 @@ public class GTextBox extends GTextObject {
                                     if (sel_start > char_starti && sel_start <= char_endi) {
                                         int pos = sel_start - local_detail[curRow][AREA_START];
                                         drawSelX = local_detail[curRow][AREA_DETAIL_ADD + pos];
+                                        drawSelW = row_width - (drawSelX - local_detail[curRow][AREA_DETAIL_ADD]);
                                     }
                                     //本行有选择终点
                                     if (sel_end > char_starti && sel_end <= char_endi + 1) {
@@ -804,7 +816,7 @@ public class GTextBox extends GTextObject {
                                         }
                                     }
 
-                                    if (sel_start >= char_endi + 1 || sel_end < char_starti) {
+                                    if (sel_start >= char_endi + 1 || sel_end <= char_starti) {
                                         //此行没有起点和终点
                                     } else {
                                         //此行有起点或终点,或在起终点之间的整行

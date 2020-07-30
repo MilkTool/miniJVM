@@ -7,55 +7,33 @@ package org.mini.gui;
 
 import org.mini.glfm.Glfm;
 import org.mini.glfw.Glfw;
-import static org.mini.gui.GObject.LEFT;
-import static org.mini.gui.GObject.isInBoundle;
-import static org.mini.nanovg.Gutil.toUtf8;
+import org.mini.gui.event.GStateChangeListener;
+
+import java.util.List;
+
 import static org.mini.gui.GToolkit.nvgRGBA;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_CENTER;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_LEFT;
-import static org.mini.nanovg.Nanovg.NVG_ALIGN_MIDDLE;
-import static org.mini.nanovg.Nanovg.NVG_HOLE;
-import static org.mini.nanovg.Nanovg.nvgBeginPath;
-import static org.mini.nanovg.Nanovg.nvgBoxGradient;
-import static org.mini.nanovg.Nanovg.nvgFill;
-import static org.mini.nanovg.Nanovg.nvgFillColor;
-import static org.mini.nanovg.Nanovg.nvgFillPaint;
-import static org.mini.nanovg.Nanovg.nvgFontBlur;
-import static org.mini.nanovg.Nanovg.nvgFontFace;
-import static org.mini.nanovg.Nanovg.nvgFontSize;
-import static org.mini.nanovg.Nanovg.nvgLineTo;
-import static org.mini.nanovg.Nanovg.nvgLinearGradient;
-import static org.mini.nanovg.Nanovg.nvgMoveTo;
-import static org.mini.nanovg.Nanovg.nvgPathWinding;
-import static org.mini.nanovg.Nanovg.nvgRect;
-import static org.mini.nanovg.Nanovg.nvgRoundedRect;
-import static org.mini.nanovg.Nanovg.nvgStroke;
-import static org.mini.nanovg.Nanovg.nvgStrokeColor;
-import static org.mini.nanovg.Nanovg.nvgTextAlign;
-import static org.mini.nanovg.Nanovg.nvgTextJni;
+import static org.mini.nanovg.Gutil.toUtf8;
+import static org.mini.nanovg.Nanovg.*;
 
 /**
- *
  * @author gust
  */
 public class GFrame extends GContainer {
 
     static final float TITLE_HEIGHT = 30.f, PAD = 2.f;
 
-    String title;
-    byte[] title_arr;
+    protected String title;
+    protected byte[] title_arr;
 
-    byte[] close_arr = {(byte) 0xe2, (byte) 0x9d, (byte) 0x8e, 0};
-    float[] close_boundle = new float[4];
+    protected byte[] close_arr = {(byte) 0xe2, (byte) 0x9d, (byte) 0x8e, 0};
+    protected float[] close_boundle = new float[4];
 
-    int background_rgba;
+    protected GViewPort view = new GViewPort();
+    protected GPanel title_panel = new GPanel();
 
-    GViewPort panel = new GViewPort();
-
-    GPanel title_panel = new GPanel();
-    long vg;
-    int frameMode;
-    boolean closable = true;
+    protected int frameMode;
+    protected boolean closable = true;
+    protected GStateChangeListener stateChangeListener;
 
     public GFrame() {
         this("", (float) 0, (float) 0, (float) 300, (float) 200);
@@ -70,26 +48,22 @@ public class GFrame extends GContainer {
         setLocation(left, top);
         setSize(width, height);
 
-        panel.setLocation(PAD, TITLE_HEIGHT + PAD);
-        panel.setSize(width - PAD * 2, height - TITLE_HEIGHT - PAD * 2);
-        add(panel);
+        view.setLocation(PAD, TITLE_HEIGHT + PAD);
+        view.setSize(width - PAD * 2, height - TITLE_HEIGHT - PAD * 2);
+        addImpl(view);
 
         title_panel.setLocation(1, 1);
         title_panel.setSize(width - PAD, TITLE_HEIGHT);
-        add(title_panel);
+        addImpl(title_panel);
     }
 
     @Override
     public void setSize(float w, float h) {
         title_panel.setSize(w - PAD, TITLE_HEIGHT);
-        panel.setSize(w - PAD * 2, h - TITLE_HEIGHT - PAD * 2);
+        view.setSize(w - PAD * 2, h - TITLE_HEIGHT - PAD * 2);
         super.setSize(w, h);
     }
 
-    @Override
-    public int getType() {
-        return TYPE_FRAME;
-    }
 
     @Override
     public float getInnerX() {
@@ -128,8 +102,10 @@ public class GFrame extends GContainer {
 
     public void close() {
         if (parent != null) {
-            parent.remove(this);
-
+            parent.removeImpl(this);
+            if (stateChangeListener != null) {
+                stateChangeListener.onStateChange(this);
+            }
         }
     }
 
@@ -150,12 +126,8 @@ public class GFrame extends GContainer {
         return frameMode;
     }
 
-    public void setBackground(int rgba) {
-        background_rgba = rgba;
-    }
-
     public GViewPort getView() {
-        return panel;
+        return view;
     }
 
     /**
@@ -199,20 +171,20 @@ public class GFrame extends GContainer {
 
     @Override
     public void onAdd(GObject obj) {
+        super.onAdd(obj);
         if (parent != null) {
             parent.setFocus(this);
         }
     }
 
     @Override
-    public boolean update(long vg) {
-        this.vg = vg;
+    public boolean paint(long vg) {
         float x = getX();
         float y = getY();
         float w = getW();
         float h = getH();
         drawWindow(vg, title, x, y, w, h);
-        super.update(this.vg);
+        super.paint(vg);
         return true;
     }
 
@@ -258,14 +230,15 @@ public class GFrame extends GContainer {
         nvgFontFace(vg, GToolkit.getFontWord());
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
-        nvgFontBlur(vg, 2);
-        nvgFillColor(vg, nvgRGBA(0, 0, 0, 128));
-        nvgTextJni(vg, x + w / 2, y + 16 + 1, title_arr, 0, title_arr.length);
+        if (title_arr != null) {
+            nvgFontBlur(vg, 2);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 128));
+            nvgTextJni(vg, x + w / 2, y + 16 + 1, title_arr, 0, title_arr.length);
 
-        nvgFontBlur(vg, 0);
-        nvgFillColor(vg, GToolkit.getStyle().getFrameTitleColor());
-        nvgTextJni(vg, x + w / 2, y + 16, title_arr, 0, title_arr.length);
-
+            nvgFontBlur(vg, 0);
+            nvgFillColor(vg, GToolkit.getStyle().getFrameTitleColor());
+            nvgTextJni(vg, x + w / 2, y + 16, title_arr, 0, title_arr.length);
+        }
         if (closable) {
             nvgFontSize(vg, GToolkit.getStyle().getIconFontSize());
             nvgFontFace(vg, GToolkit.getFontIcon());
@@ -310,7 +283,7 @@ public class GFrame extends GContainer {
         if (isInArea(x, y)) {
             super.mouseButtonEvent(button, pressed, x, y);
         } else {
-            panel.setFocus(null);
+            view.setFocus(null);
         }
     }
 
@@ -327,11 +300,11 @@ public class GFrame extends GContainer {
 
     @Override
     public boolean scrollEvent(float scrollX, float scrollY, float x, float y) {
-        return panel.scrollEvent(scrollX, scrollY, x, y);
+        return view.scrollEvent(scrollX, scrollY, x, y);
     }
 
     @Override
-    public void touchEvent(int phase, int x, int y) {
+    public void touchEvent(int touchid, int phase, int x, int y) {
 
         switch (phase) {
             case Glfm.GLFMTouchPhaseBegan:
@@ -354,9 +327,9 @@ public class GFrame extends GContainer {
         }
 
         if (isInArea(x, y)) {
-            super.touchEvent(phase, x, y);
+            super.touchEvent(touchid, phase, x, y);
         } else {
-            panel.setFocus(null);
+            view.setFocus(null);
         }
     }
 
@@ -364,4 +337,48 @@ public class GFrame extends GContainer {
     public String toString() {
         return title + "/" + super.toString();
     }
+
+
+    public List<GObject> getElements() {
+        return view.getElementsImpl();
+    }
+
+    public int getElementSize() {
+        return view.elements.size();
+    }
+
+    public void add(GObject nko) {
+        view.addImpl(nko);
+    }
+
+    public void add(int index, GObject nko) {
+        view.addImpl(index, nko);
+    }
+
+    public void remove(GObject nko) {
+        view.removeImpl(nko);
+    }
+
+    public void remove(int index) {
+        view.removeImpl(index);
+    }
+
+    public boolean contains(GObject son) {
+        return view.containsImpl(son);
+    }
+
+    public void clear() {
+        view.clearImpl();
+    }
+
+
+    public GStateChangeListener getStateChangeListener() {
+        return stateChangeListener;
+    }
+
+    public void setStateChangeListener(GStateChangeListener stateChangeListener) {
+        this.stateChangeListener = stateChangeListener;
+    }
+
+
 }
